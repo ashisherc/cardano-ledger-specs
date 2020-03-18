@@ -87,14 +87,14 @@ import Shelley.Spec.Ledger.TxData
     pattern Delegation,
   )
 
--- | The unspent transaction outputs.
+-- |The unspent transaction outputs.
 newtype UTxO crypto
-  = UTxO (Map (TxIn crypto) (TxOut crypto))
-  deriving (Show, Eq, Ord, ToCBOR, FromCBOR, NoUnexpectedThunks, Generic)
+  = UTxO (Map (TxIn crypto) (UTxOOut crypto))
+  deriving (Show, Eq, Ord, ToCBOR, FromCBOR, NoUnexpectedThunks)
 
 instance Relation (UTxO crypto) where
   type Domain (UTxO crypto) = TxIn crypto
-  type Range (UTxO crypto) = TxOut crypto
+  type Range (UTxO crypto)  = UTxOOut crypto
 
   singleton k v = UTxO $ Map.singleton k v
 
@@ -143,22 +143,22 @@ txins ::
   Set (TxIn crypto)
 txins = _inputs
 
--- | Compute the transaction outputs of a transaction.
-txouts ::
-  Crypto crypto =>
-  TxBody crypto ->
-  UTxO crypto
-txouts tx =
-  UTxO $
-    Map.fromList [(TxIn transId idx, out) | (out, idx) <- zip (toList $ _outputs tx) [0 ..]]
+-- |Compute the transaction outputs of a transaction.
+txouts
+  :: Crypto crypto
+  => TxBody crypto
+  -> UTxO crypto
+txouts tx = UTxO $
+  Map.fromList [(TxIn transId idx, UTxOOut (getAddressTx out) (valueToCompactValue $ getValueTx out)) |
+    (out, idx) <- zip (toList $ _outputs tx) [0..]]
   where
     transId = txid tx
 
--- | Lookup a txin for a given UTxO collection
-txinLookup ::
-  TxIn crypto ->
-  UTxO crypto ->
-  Maybe (TxOut crypto)
+-- |Lookup a txin for a given UTxO collection
+txinLookup
+  :: TxIn crypto
+  -> UTxO crypto
+  -> Maybe (UTxOOut crypto)
 txinLookup txin (UTxO utxo') = Map.lookup txin utxo'
 
 -- | Verify a transaction body witness
@@ -207,18 +207,16 @@ makeWitnessesFromScriptKeys txbodyHash hashKeyMap scriptHashes =
   let witKeys = Map.restrictKeys hashKeyMap scriptHashes
    in makeWitnessesVKey txbodyHash (Map.elems witKeys)
 
--- | Determine the total balance contained in the UTxO.
-balance :: UTxO crypto -> Coin
-balance (UTxO utxo) = foldr addCoins 0 utxo
-  where
-    addCoins (TxOut _ a) b = a + b
+-- |Determine the total balance contained in the UTxO.
+balance :: Crypto crypto => UTxO crypto -> Value crypto
+balance (UTxO utxo) = foldr (+) zeroV (Set.map getValue (range utxo))
 
--- | Determine the total deposit amount needed
-totalDeposits ::
-  PParams ->
-  StakePools crypto ->
-  [DCert crypto] ->
-  Coin
+-- |Determine the total deposit amount needed
+totalDeposits
+  :: PParams
+  -> StakePools crypto
+  -> [DCert crypto]
+  -> Coin
 totalDeposits pc (StakePools stpools) cs = foldl' f (Coin 0) cs'
   where
     f coin cert = coin + dvalue cert pc
@@ -258,11 +256,11 @@ scriptsNeeded ::
   Tx crypto ->
   Set (ScriptHash crypto)
 scriptsNeeded u tx =
-  Set.fromList (Map.elems $ Map.mapMaybe (getScriptHash . unTxOut) u'')
+  Set.fromList (Map.elems $ Map.mapMaybe (getScriptHash . getAddress) u'')
     `Set.union` Set.fromList (Maybe.mapMaybe (scriptCred . getRwdCred) $ Map.keys withdrawals)
     `Set.union` Set.fromList (Maybe.mapMaybe scriptStakeCred (filter requiresVKeyWitness certificates))
+    `Set.union` Set.fromList (keys $ val $ _forge $ _body tx)
   where
-    unTxOut (TxOut a _) = a
     withdrawals = unWdrl $ _wdrls $ _body tx
     UTxO u'' = txinsScript (txins $ _body tx) u <| u
     certificates = (toList . _certs . _body) tx
@@ -277,8 +275,8 @@ txinsScript txInps (UTxO u) =
   txInps
     `Set.intersection` Map.keysSet
       ( Map.filter
-          ( \(TxOut a _) ->
-              case a of
+          ( \utxoout ->
+              case (getAddress utxoout) of
                 Addr _ (ScriptHashObj _) _ -> True
                 _ -> False
           )
