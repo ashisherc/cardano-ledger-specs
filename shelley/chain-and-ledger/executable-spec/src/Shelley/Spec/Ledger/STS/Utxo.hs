@@ -94,13 +94,15 @@ instance
         !Coin -- the minimum fee for this transaction
         !Coin -- the fee supplied in this transaction
     | ValueNotConservedUTxO
-        !(Value crypto) -- the Coin consumed by this transaction
-        !(Value crypto) -- the Coin produced by this transaction
+        !(Value crypto) -- the Value consumed by this transaction
+        !(Value crypto) -- the Value produced by this transaction
     | WrongNetwork
         !Network -- the expected network id
         !(Set (Addr crypto)) -- the set of addresses with incorrect network IDs
     | OutputTooSmallUTxO
         ![UTxOOut crypto] -- list of supplied transaction outputs that are too small
+    | ForgingAda
+        !(Value crypto) -- the forge value containing Ada
     | UpdateFailure (PredicateFailure (PPUP crypto)) -- Subtransition Failures
     deriving (Eq, Show, Generic)
   transitionRules = [utxoInductive]
@@ -135,11 +137,14 @@ instance
     OutputTooSmallUTxO outs ->
       encodeListLen 2 <> toCBOR (6 :: Word8)
         <> encodeFoldable outs
-    (UpdateFailure a) ->
+    (ForgingAda v) ->
       encodeListLen 2 <> toCBOR (7 :: Word8)
+        <> toCBOR v
+    (UpdateFailure a) ->
+      encodeListLen 2 <> toCBOR (8 :: Word8)
         <> toCBOR a
     (WrongNetwork right wrongs) ->
-      encodeListLen 3 <> toCBOR (8 :: Word8)
+      encodeListLen 3 <> toCBOR (9 :: Word8)
         <> toCBOR right
         <> encodeFoldable wrongs
 
@@ -174,9 +179,12 @@ instance
           outs <- decodeList fromCBOR
           pure $ OutputTooSmallUTxO outs
         7 -> (,) 2 <$> do
+          v <- fromCBOR
+          pure $ ForgingAda v
+        8 -> (,) 2 <$> do
           a <- fromCBOR
           pure $ UpdateFailure a
-        8 -> (,) 3 <$> do
+        9 -> (,) 3 <$> do
           right <- fromCBOR
           wrongs <- decodeSet fromCBOR
           pure $ WrongNetwork right wrongs
@@ -226,6 +234,11 @@ utxoInductive = do
   all (valueToCompactValue zeroV <=) outputValues
     ?! OutputTooSmallUTxO
       (filter (\(UTxOOut _ v) -> v < (coinToValue minUTxOValue)) (Set.toList (range (txouts txb))))
+
+  let (Value vls) = _forge txb
+  let cids = Map.keys vls
+  all (adaID /=) cids  ?! ForgingAda
+
 
   let maxTxSize_ = fromIntegral (_maxTxSize pp)
       txSize_ = txsize tx
