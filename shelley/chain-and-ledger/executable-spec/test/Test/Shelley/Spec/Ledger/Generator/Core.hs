@@ -377,10 +377,11 @@ pickStakeKey keys = vKey . snd <$> QC.elements keys
 -- Note: we need to keep the initial utxo coin sizes large enough so that
 -- when we simulate sequences of transactions, we have enough funds available
 -- to include certificates that require deposits.
+-- TODO - make this work with value
 genTxOut :: HasCallStack => Constants -> [Addr] -> Gen [TxOut]
 genTxOut Constants {maxGenesisOutputVal, minGenesisOutputVal} addrs = do
   ys <- genCoinList minGenesisOutputVal maxGenesisOutputVal (length addrs) (length addrs)
-  return (uncurry TxOut <$> zip addrs ys)
+  return (uncurry TxOut <$> zip addrs (fmap coinToValue ys))
 
 -- | Generates a list of 'Coin' values of length between 'lower' and 'upper'
 -- and with values between 'minCoin' and 'maxCoin'.

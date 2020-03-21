@@ -218,7 +218,7 @@ type KeyPairs crypto = [(KeyPair 'Payment crypto, KeyPair 'Staking crypto)]
 -- | A ledger validation state consists of a ledger state 't' and the list of
 -- validation errors that occurred from a valid 's' to reach 't'.
 data LedgerValidation crypto
-  = LedgerValidation [(ValidationError crypto)] (LedgerState crypto)
+  = LedgerValidation [ValidationError] (LedgerState crypto)
   deriving (Show, Eq, Generic)
 
 instance NoUnexpectedThunks (LedgerValidation crypto)
@@ -702,7 +702,7 @@ validInputs
   :: Crypto crypto
   => TxBody crypto
   -> UTxOState crypto
-  -> (Validity crypto)
+  -> Validity
 validInputs tx u =
   if txins tx `Set.isSubsetOf` dom (_utxo u)
     then Valid
@@ -732,7 +732,7 @@ minfee :: forall crypto. (Crypto crypto) => PParams -> Tx crypto -> Coin
 minfee pp tx = Coin $ fromIntegral (_minfeeA pp) * txsize tx + fromIntegral (_minfeeB pp)
 
 -- |Determine if the fee is large enough
-validFee :: forall crypto . (Crypto crypto) => PParams -> Tx crypto-> (Validity crypto)
+validFee :: forall crypto . (Crypto crypto) => PParams -> Tx crypto-> Validity
 validFee pc tx =
   if needed <= given
     then Valid
@@ -839,11 +839,11 @@ preserveBalance
   -> PParams
   -> TxBody crypto
   -> UTxOState crypto
-  -> (Validity crypto)
+  -> Validity
 preserveBalance stakePools stakeKeys pp tx u =
   if destroyed' == created'
     then Valid
-    else Invalid [ValueNotConserved destroyed' created']
+    else Invalid [ValueNotConserved (toValBST destroyed') (toValBST created')]
   where
     destroyed' = consumed pp (_utxo u) stakeKeys tx
     created' = produced pp stakePools tx
@@ -853,7 +853,7 @@ preserveBalance stakePools stakeKeys pp tx u =
 correctWithdrawals
   :: RewardAccounts crypto
   -> RewardAccounts crypto
-  -> (Validity crypto)
+  -> Validity
 correctWithdrawals accs withdrawals =
   if withdrawals `Map.isSubmapOf` accs
     then Valid
@@ -931,7 +931,7 @@ enoughWits
   => Tx crypto
   -> GenDelegs crypto
   -> UTxOState crypto
-  -> (Validity crypto)
+  -> Validity
 enoughWits tx@(Tx _ wits _ _) d' u =
   if witsVKeyNeeded (_utxo u) tx d' `Set.isSubsetOf` signers
     then Valid
@@ -948,7 +948,7 @@ validRuleUTXO
   -> SlotNo
   -> Tx crypto
   -> UTxOState crypto
-  -> (Validity crypto)
+  -> Validity
 validRuleUTXO accs stakePools stakeKeys pc slot tx u =
                           validInputs txb u
                        <> current txb slot
@@ -965,7 +965,7 @@ validRuleUTXOW
   => Tx crypto
   -> GenDelegs crypto
   -> LedgerState crypto
-  -> (Validity crypto)
+  -> Validity
 validRuleUTXOW tx d' l = verifiedWits tx
                    <> enoughWits tx d' (_utxoState l)
 
@@ -989,7 +989,7 @@ validTx
   -> SlotNo
   -> PParams
   -> LedgerState crypto
-  -> (Validity crypto)
+  -> Validity
 validTx tx d' slot pp l =
     validRuleUTXO  ((_rewards  . _dstate . _delegationState ) l)
                    ((_stPools  . _pstate . _delegationState ) l)
