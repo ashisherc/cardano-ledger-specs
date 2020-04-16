@@ -650,13 +650,14 @@ genesisId =
        StrictSeq.Empty
        StrictSeq.Empty
        (Value Map.empty)
+       (Value Map.empty)
        (Wdrl Map.empty)
        (Coin 0)
        (SlotNo 0)
        SNothing
        SNothing
     )
-    
+
 -- |Creates the UTxO for a new ledger with the specified transaction outputs.
 genesisCoins
   :: (Crypto crypto)
@@ -730,6 +731,13 @@ txsize tx = numInputs * inputSize + numOutputs * outputSize + rest
 -- | Minimum fee calculation
 minfee :: forall crypto. (Crypto crypto) => PParams -> Tx crypto -> Coin
 minfee pp tx = Coin $ fromIntegral (_minfeeA pp) * txsize tx + fromIntegral (_minfeeB pp)
+
+-- |Determine if Ada is being forged
+validForge :: forall crypto . (Crypto crypto) => Tx crypto-> Validity
+validForge tx =
+  if elem adaID (Map.keys $ val $ _forge $ _body tx)
+    then Valid
+    else Invalid [ForgingAda]
 
 -- |Determine if the fee is large enough
 validFee :: forall crypto . (Crypto crypto) => PParams -> Tx crypto-> Validity
@@ -879,8 +887,8 @@ witsVKeyNeeded utxo' tx@(Tx txbody _ _ _) _genDelegs =
     unspendableKeyHash = KeyHash (coerce (hash 0 :: Hash crypto Int))
     insertHK txin hkeys =
       case txinLookup txin utxo' of
-        Just (TxOut (Addr _ (KeyHashObj pay) _) _) -> Set.insert pay hkeys
-        Just (TxOut (AddrBootstrap _) _) -> Set.insert unspendableKeyHash hkeys
+        Just (UTxOOut (Addr _ (KeyHashObj pay) _) _) -> Set.insert pay hkeys
+        Just (UTxOOut (AddrBootstrap _) _) -> Set.insert unspendableKeyHash hkeys
         -- NOTE: Until Byron addresses are supported, we insert an unspendible keyhash
         _ -> hkeys
     wdrlAuthors =
@@ -954,6 +962,7 @@ validRuleUTXO accs stakePools stakeKeys pc slot tx u =
                        <> current txb slot
                        <> validNoReplay txb
                        <> validFee pc tx
+                       <> validForge tx
                        <> preserveBalance stakePools stakeKeys pc txb u
                        <> correctWithdrawals accs (unWdrl $ _wdrls txb)
   where txb = _body tx
