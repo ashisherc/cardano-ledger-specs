@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Shelley.Spec.Ledger.Rewards
@@ -14,6 +15,9 @@ module Shelley.Spec.Ledger.Rewards
     reward,
     nonMyopicStake,
     nonMyopicMemberRew,
+    percentile',
+    Histogram (..),
+    LogWeight (..),
   )
 where
 
@@ -27,14 +31,18 @@ import Cardano.Binary
     enforceSize,
   )
 import Cardano.Prelude (NoUnexpectedThunks (..))
+import Data.Foldable (find)
 import Data.Function (on)
 import Data.List (foldl', sortBy)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Ratio ((%))
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 import Shelley.Spec.Ledger.BaseTypes
@@ -56,7 +64,114 @@ import Shelley.Spec.Ledger.EpochBoundary
   )
 import Shelley.Spec.Ledger.Keys (KeyHash, KeyRole (..))
 import Shelley.Spec.Ledger.PParams (PParams, _a0, _d, _nOpt)
+import Shelley.Spec.Ledger.Serialization (decodeSeq, encodeFoldable)
 import Shelley.Spec.Ledger.TxData (PoolParams (..), RewardAcnt (..))
+
+{- TODOs
+ - represent the histogram
+ -
+ - update the histogram using #blocks made & stake distribution
+ -   - produce the likelihood function
+ -   - calculate "integrals"
+ -   - logs of integrals
+ -   - normalize the histogram (because over time the numbers can drift to odd places)
+ -       + by adding
+ -   - decay the histogram
+ -       + by multiplying
+ - sample histogram
+ -
+ -
+ - pick our buckets (later?)
+ -
+ - -}
+
+newtype LogWeight = LogWeight Float
+  deriving (Eq, Show, Num, NoUnexpectedThunks, ToCBOR, FromCBOR)
+
+toLogWeight :: Double -> LogWeight
+toLogWeight d = LogWeight (realToFrac $ log d)
+
+fromLogWeight :: LogWeight -> Double
+fromLogWeight (LogWeight l) = exp (realToFrac l)
+
+data Histogram = Histogram {points :: Seq LogWeight}
+  deriving (Eq, Show, Generic)
+
+instance ToCBOR Histogram where
+  toCBOR (Histogram logweights) = encodeFoldable logweights
+
+instance FromCBOR Histogram where
+  fromCBOR = Histogram <$> decodeSeq fromCBOR
+
+instance NoUnexpectedThunks Histogram
+
+calculate_t :: Rational -> UnitInterval -> Double
+calculate_t activeSlotCoeff relativeStake =
+  1 - (1 - realToFrac activeSlotCoeff)
+    ** realToFrac (unitIntervalToRational relativeStake)
+
+likelihood ::
+  Int -> -- number of blocks produced this epoch
+  Double -> -- chance we're allowed to produce a block in this slot
+  Word64 ->
+  Seq LogWeight
+likelihood blocks t slotsPerEpoch = Seq.fromList $ sample <$> samplePositions
+  where
+    -- The likelihood function L(x) is the probability of observing the data we got
+    -- under the assumption that the underlying pool performance is equal to x.
+    -- L(x) = C(n,m) * (tx)^n * (1-tx)^m
+    -- where
+    -- t is the chance we're allowed to produce a block
+    -- n is the number of slots in which a block was produced
+    -- m is the number of slots in which a block was not produced
+    --      (slots per epoch minus n)
+    -- C(n,m) is a coefficient that will be irrelevant
+    -- Since the likelihood function only matters up to a scalar multiple, we will
+    -- will divide out C(n,m) t^n and use the following instead:
+    -- L(x) = x^n * (1-tx)^m
+    -- We represent this function using 100 sample points, but to avoid very
+    -- large exponents, we store the log of the value instead of the value itself.
+    -- log(L(x)) = log [ x^n * (1-tx)^m ]
+    --           = n * log(x) + m * log(1 - tx)
+    -- TODO: worry more about loss of floating point precision
+    --
+    -- example:
+    -- small pool has relative stake of 1 / 1,000,000 (~ 30k ada of 35b ada)
+    -- smallest pool has relative stake of 1 / 45,000,000,000,000,000
+    -- t = 1 - (19/20)^(1/1,000,000)
+    n = fromIntegral blocks
+    m = fromIntegral $ slotsPerEpoch - fromIntegral blocks
+    l :: Double -> Double
+    l x = n * log x + m * log (1 - t * x)
+    sample position = LogWeight (realToFrac $ l position)
+    samplePositions = (\x -> (x + 0.5) / 100.0) <$> [0.0 .. 99.0]
+
+update :: Histogram -> Seq LogWeight -> Histogram
+update (Histogram points) likelihoods = normalize $ Histogram $ Seq.zipWith (+) points likelihoods
+
+-- | Normalize the histogram so that the total area is 1
+normalize :: Histogram -> Histogram
+normalize (Histogram values) = Histogram $ (\x -> x - logArea) <$> values
+  where
+    logArea = toLogWeight area
+    area = reimannSum 0.01 (fromLogWeight <$> values)
+
+-- | Calculate the k percentile for this distribution.
+-- k is a value between 0 and 1. The 0 percentile is 0 and the 1 percentile is 1
+percentile :: Double -> Histogram -> ApparentPerformance
+percentile p (Histogram values) =
+  ApparentPerformance . fst
+    $ fromMaybe (1, 1)
+    $ find (\(x, fx) -> fx > p) cdf
+  where
+    cdf = Seq.zip samplePositions $ Seq.scanl (+) 0 (fromLogWeight <$> values)
+    samplePositions = (\x -> (x + 0.5) / 100.0) <$> Seq.fromList [0.0 .. 99.0]
+
+percentile' :: Histogram -> ApparentPerformance
+percentile' = percentile 0.1
+
+reimannSum :: (Functor f, Foldable f) => Double -> f Double -> Double
+reimannSum width heights = sum $ fmap (width *) heights
 
 newtype ApparentPerformance = ApparentPerformance {unApparentPerformance :: Double}
   deriving (Show, Eq, Generic, NoUnexpectedThunks)
@@ -67,8 +182,11 @@ instance ToCBOR ApparentPerformance where
 instance FromCBOR ApparentPerformance where
   fromCBOR = ApparentPerformance <$> decodeDouble
 
+bucketIntervals :: [Float]
+bucketIntervals = undefined
+
 data NonMyopic crypto = NonMyopic
-  { apparentPerformances :: !(Map (KeyHash 'StakePool crypto) ApparentPerformance),
+  { histograms :: !(Map (KeyHash 'StakePool crypto) Histogram),
     rewardPot :: !Coin,
     snap :: !(SnapShot crypto)
   }
@@ -82,7 +200,7 @@ instance NoUnexpectedThunks (NonMyopic crypto)
 instance Crypto crypto => ToCBOR (NonMyopic crypto) where
   toCBOR
     NonMyopic
-      { apparentPerformances = aps,
+      { histograms = aps,
         rewardPot = rp,
         snap = s
       } =
@@ -99,7 +217,7 @@ instance Crypto crypto => FromCBOR (NonMyopic crypto) where
     s <- fromCBOR
     pure $
       NonMyopic
-        { apparentPerformances = aps,
+        { histograms = aps,
           rewardPot = rp,
           snap = s
         }

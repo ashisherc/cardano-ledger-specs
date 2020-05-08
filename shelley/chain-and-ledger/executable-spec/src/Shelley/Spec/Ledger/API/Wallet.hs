@@ -33,6 +33,7 @@ import Shelley.Spec.Ledger.Rewards
     getTopRankedPools,
     nonMyopicMemberRew,
     nonMyopicStake,
+    percentile',
   )
 import Shelley.Spec.Ledger.TxData (PoolParams (..), TxOut (..))
 import Shelley.Spec.Ledger.UTxO (UTxO (..))
@@ -58,16 +59,16 @@ getNonMyopicMemberRewards globals ss creds =
     es = nesEs ss
     pp = esPp es
     NonMyopic
-      { apparentPerformances = aps,
+      { histograms = hs,
         rewardPot = rPot,
         snap = (SnapShot stake delegs poolParams)
       } = esNonMyopic es
     poolData =
       Map.intersectionWithKey
-        (\k a p -> (a, p, toShare . sum . unStake $ poolStake k delegs stake))
-        aps
+        (\k h p -> (percentile' h, p, toShare . sum . unStake $ poolStake k delegs stake))
+        hs
         poolParams
-    topPools = getTopRankedPools rPot (Coin total) pp poolParams aps
+    topPools = getTopRankedPools rPot (Coin total) pp poolParams (fmap percentile' hs)
     mkNMMRewards ms k (ap, poolp, sigma) = nonMyopicMemberRew pp poolp rPot s ms nmps ap
       where
         s = (toShare . _poolPledge) poolp

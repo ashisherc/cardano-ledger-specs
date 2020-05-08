@@ -87,7 +87,11 @@ import Shelley.Spec.Ledger.LedgerState
 import Shelley.Spec.Ledger.MetaData (MetaDataHash (..))
 import Shelley.Spec.Ledger.OCert (KESPeriod (..))
 import Shelley.Spec.Ledger.PParams (PParams, ProtVer)
-import Shelley.Spec.Ledger.Rewards (ApparentPerformance (..))
+import Shelley.Spec.Ledger.Rewards
+  ( ApparentPerformance (..),
+    Histogram (..),
+    LogWeight (..),
+  )
 import qualified Shelley.Spec.Ledger.STS.Chain as STS
 import qualified Shelley.Spec.Ledger.STS.Prtcl as STS (PrtclState)
 import Shelley.Spec.Ledger.Scripts (ScriptHash (ScriptHash))
@@ -416,6 +420,12 @@ instance Crypto c => Arbitrary (OBftSlot c) where
 
 instance Arbitrary PParams where
   arbitrary = genPParams (geConstants genEnv)
+
+instance Arbitrary Histogram where
+  arbitrary = Histogram <$> arbitrary
+
+instance Arbitrary LogWeight where
+  arbitrary = LogWeight <$> arbitrary
 
 instance Arbitrary Mock.NonMyopic where
   arbitrary = genericArbitraryU

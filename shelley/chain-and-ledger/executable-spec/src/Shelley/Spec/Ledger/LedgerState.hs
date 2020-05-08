@@ -913,26 +913,14 @@ updateNonMypopic ::
   NonMyopic crypto
 updateNonMypopic nm rPot aps ss =
   nm
-    { apparentPerformances = aps',
+    { histograms = Map.empty,
+      -- TODO update histograms using:
+      -- the new apparent performances `aps`,
+      -- the historic histograms `(histograms nm)`,
+      -- and `update` from Shelley.Spec.Ledger.Rewards
       rewardPot = rPot,
       snap = ss
     }
-  where
-    SnapShot _ _ poolParams = ss
-    absentPools =
-      Set.toList $
-        (Map.keysSet poolParams) `Set.difference` (Map.keysSet aps)
-    performanceZero = Map.fromList $ fmap (\p -> (p, 0)) absentPools
-    -- TODO how to handle pools with near zero stake?
-
-    expMovAvgWeight = 0.5 -- TODO move to globals or protocol parameters?
-    prev = apparentPerformances nm
-    performance kh ap = case Map.lookup kh prev of
-      Nothing -> ApparentPerformance $ fromRational ap -- TODO give new pools the average performance?
-      Just (ApparentPerformance p) ->
-        ApparentPerformance $
-          expMovAvgWeight * p + (1 - expMovAvgWeight) * (fromRational ap)
-    aps' = Map.mapWithKey performance (aps `Map.union` performanceZero)
 
 -- | Create a reward update
 createRUpd ::

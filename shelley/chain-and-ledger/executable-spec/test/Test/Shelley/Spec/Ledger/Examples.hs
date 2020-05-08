@@ -105,6 +105,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust, isJust, maybe)
 import Data.Ratio ((%))
+import qualified Data.Sequence as Seq
 import qualified Data.Sequence.Strict as StrictSeq
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -232,6 +233,7 @@ import Shelley.Spec.Ledger.PParams
   )
 import Shelley.Spec.Ledger.Rewards
   ( ApparentPerformance (..),
+    Histogram (..),
     emptyNonMyopic,
     rewardPot,
     pattern NonMyopic,
@@ -1506,13 +1508,16 @@ oCertIssueNosEx2H =
     2
     oCertIssueNosEx2G
 
-alicePerfEx2H :: ApparentPerformance
-alicePerfEx2H = ApparentPerformance (beta / sigma)
-  where
-    beta = 1 -- Alice produced the only decentralized block this epoch
-    reserves = _reserves acntEx2G
-    sigma = fromRational (fromIntegral stake % (fromIntegral $ maxLLSupply - reserves))
-    stake = aliceCoinEx2BBase + aliceCoinEx2BPtr + bobInitCoin
+--alicePerfEx2H :: ApparentPerformance
+--alicePerfEx2H = ApparentPerformance (beta / sigma)
+--  where
+--    beta = 1 -- Alice produced the only decentralized block this epoch
+--    reserves = _reserves acntEx2G
+--    sigma = fromRational (fromIntegral stake % (fromIntegral $ maxLLSupply - reserves))
+--    stake = aliceCoinEx2BBase + aliceCoinEx2BPtr + bobInitCoin
+
+alicePerfEx2H :: Histogram
+alicePerfEx2H = Histogram Seq.empty
 
 deltaT2H :: Coin
 deltaT2H = Coin 786986666668
@@ -1852,7 +1857,7 @@ expectedStEx2K =
                 deltaF = Coin 0,
                 nonMyopic =
                   NonMyopic
-                    (Map.singleton (hk alicePool) (ApparentPerformance 0))
+                    (Map.singleton (hk alicePool) (Histogram Seq.empty))
                     (Coin 0)
                     snapEx2E
               }
