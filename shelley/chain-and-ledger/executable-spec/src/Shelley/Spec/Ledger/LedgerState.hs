@@ -650,7 +650,6 @@ genesisId =
        StrictSeq.Empty
        StrictSeq.Empty
        (Value Map.empty)
-       (Value Map.empty)
        (Wdrl Map.empty)
        (Coin 0)
        (SlotNo 0)
