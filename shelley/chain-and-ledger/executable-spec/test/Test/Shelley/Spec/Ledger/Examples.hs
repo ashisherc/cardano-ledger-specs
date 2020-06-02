@@ -2675,7 +2675,7 @@ initStEx5A =
   setChainStateAccountState
     ( AccountState
         { _treasury = 1000,
-          _reserves = maxLLSupply - (1000 + balance utxoEx2A)
+          _reserves = maxLLSupply - (1000 + getAdaAmount (balance utxoEx2A))
         }
     )
     initStEx2A
@@ -2684,7 +2684,7 @@ acntEx5A :: AccountState
 acntEx5A =
   AccountState
     { _treasury = treasuryEx5A,
-      _reserves = maxLLSupply - (balance utxoEx2A + treasuryEx5A)
+      _reserves = maxLLSupply - (getAdaAmount (balance utxoEx2A) + treasuryEx5A)
     }
 
 expectedStEx5A :: MIRPot -> ChainState
@@ -2899,7 +2899,7 @@ blockEx5D' pot =
 -- register a staking credential for Alice, 2) deducing the key deposit from the
 -- 100 and to 3) create the reward account with an initial amount of 93.
 aliceCoinEx5D'' :: Value
-aliceCoinEx5D'' = aliceCoinEx5F' - (coinToValue (Coin 1))
+aliceCoinEx5D'' = aliceCoinEx5D' - (coinToValue (Coin 1))
 
 txbodyEx5D'' :: MIRPot -> TxBody
 txbodyEx5D'' pot =
