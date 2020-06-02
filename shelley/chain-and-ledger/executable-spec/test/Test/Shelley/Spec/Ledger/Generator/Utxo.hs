@@ -97,7 +97,9 @@ import Test.Shelley.Spec.Ledger.Generator.Core
   )
 import Test.Shelley.Spec.Ledger.Generator.Delegation (CertCred (..))
 import Test.Shelley.Spec.Ledger.Generator.Trace.DCert (genDCerts)
-import Test.Shelley.Spec.Ledger.Generator.Update (genUpdate)
+import Test.Shelley.Spec.Ledger.Generator.Update (genUpdate) 
+
+-- TODO make witnesses for forges
 
 -- | Generate a new transaction in the context of the LEDGER STS environment and state.
 --

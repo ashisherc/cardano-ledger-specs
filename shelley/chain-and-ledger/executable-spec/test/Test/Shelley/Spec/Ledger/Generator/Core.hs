@@ -145,6 +145,9 @@ import Test.Shelley.Spec.Ledger.Utils
     runShelleyBase,
     unsafeMkUnitInterval,
   )
+import Shelley.Spec.Ledger.Value
+  ( coinToValue,
+  )
 
 -- | I'm in two minds about this. It basically takes advantage of a GHC bug to allow
 --   the inhabiting of a closed kind. On the other hand, the alternatives would be to

@@ -68,6 +68,7 @@ import Test.Shelley.Spec.Ledger.ConcreteCryptoTypes
     UTXOW,
     UTxOState,
     Wdrl,
+    Value,
     pattern GenDelegs,
   )
 import Test.Shelley.Spec.Ledger.Examples
@@ -79,6 +80,10 @@ import Test.Shelley.Spec.Ledger.Examples
     dariaAddr,
   )
 import Test.Shelley.Spec.Ledger.Utils
+import Shelley.Spec.Ledger.Value
+  ( coinToValue,
+    zeroV,
+  )
 
 -- Multi-Signature tests
 
@@ -117,24 +122,26 @@ aliceAndBobOrCarlOrDaria =
       RequireAnyOf [singleKeyOnly carlAddr, singleKeyOnly dariaAddr]
     ]
 
-initTxBody :: [(Addr, Coin)] -> TxBody
+initTxBody :: [(Addr, Value)] -> TxBody
 initTxBody addrs =
   TxBody
     (Set.fromList [TxIn genesisId 0, TxIn genesisId 1])
     (StrictSeq.fromList $ map (uncurry TxOut) addrs)
     Empty
+    zeroV
     (Wdrl Map.empty)
     (Coin 0)
     (SlotNo 0)
     SNothing
     SNothing
 
-makeTxBody :: [TxIn] -> [(Addr, Coin)] -> Wdrl -> TxBody
+makeTxBody :: [TxIn] -> [(Addr, Value)] -> Wdrl -> TxBody
 makeTxBody inp addrCs wdrl =
   TxBody
     (Set.fromList inp)
     (StrictSeq.fromList [uncurry TxOut addrC | addrC <- addrCs])
     Empty
+    zeroV
     wdrl
     (Coin 0)
     (SlotNo 10)
@@ -145,11 +152,11 @@ makeTx :: TxBody -> [KeyPair 'Witness] -> Map ScriptHash MultiSig -> Maybe MetaD
 makeTx txBody keyPairs msigs =
   Tx txBody (makeWitnessesVKey (hashTxBody txBody) keyPairs) msigs . maybeToStrictMaybe
 
-aliceInitCoin :: Coin
-aliceInitCoin = 10000
+aliceInitCoin :: Value
+aliceInitCoin = coinToValue 10000
 
-bobInitCoin :: Coin
-bobInitCoin = 1000
+bobInitCoin :: Value
+bobInitCoin = coinToValue 1000
 
 genesis :: LedgerState
 genesis = genesisState genDelegs0 utxo0
@@ -169,12 +176,12 @@ initPParams = emptyPParams {_maxTxSize = 1000}
 -- 'aliceKeep' is greater than 0, gives that amount to Alice and creates outputs
 -- locked by a script for each pair of script, coin value in 'msigs'.
 initialUTxOState ::
-  Coin ->
-  [(MultiSig, Coin)] ->
+  Value ->
+  [(MultiSig, Value)] ->
   (TxId, Either [[PredicateFailure UTXOW]] UTxOState)
 initialUTxOState aliceKeep msigs =
   let addresses =
-        [(aliceAddr, aliceKeep) | aliceKeep > 0]
+        [(aliceAddr, aliceKeep) | aliceKeep > zeroV]
           ++ map
             ( \(msig, c) ->
                 ( Addr
@@ -215,10 +222,10 @@ initialUTxOState aliceKeep msigs =
 -- 'aliceKeep' in the case of it being non-zero) to spend all funds back to
 -- Alice. Return resulting UTxO state or collected errors
 applyTxWithScript ::
-  [(MultiSig, Coin)] ->
+  [(MultiSig, Value)] ->
   [MultiSig] ->
   Wdrl ->
-  Coin ->
+  Value ->
   [KeyPair 'Witness] ->
   Either [[PredicateFailure UTXOW]] UTxOState
 applyTxWithScript lockScripts unlockScripts wdrl aliceKeep signers = utxoSt'
@@ -234,12 +241,12 @@ applyTxWithScript lockScripts unlockScripts wdrl aliceKeep signers = utxoSt'
     txbody =
       makeTxBody
         inputs
-        [(aliceAddr, aliceInitCoin + bobInitCoin + sum (unWdrl wdrl))]
+        [(aliceAddr, aliceInitCoin + bobInitCoin + (coinToValue $ sum (unWdrl wdrl)))]
         wdrl
     inputs =
       [ TxIn txId (fromIntegral n)
         | n <-
-            [0 .. length lockScripts - (if aliceKeep > 0 then 0 else 1)]
+            [0 .. length lockScripts - (if aliceKeep > zeroV then 0 else 1)]
       ]
     -- alice? + scripts
     tx =

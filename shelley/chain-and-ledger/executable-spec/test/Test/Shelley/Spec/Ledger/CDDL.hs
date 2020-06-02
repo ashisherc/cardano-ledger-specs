@@ -53,6 +53,8 @@ import Test.Shelley.Spec.Ledger.ConcreteCryptoTypes
     TxBody,
     TxIn,
     TxOut,
+    UTxOOut,
+    Value,
     Update,
   )
 import Test.Tasty

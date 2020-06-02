@@ -39,6 +39,7 @@ import qualified Shelley.Spec.Ledger.Scripts as Scripts
 import qualified Shelley.Spec.Ledger.Tx as Tx
 import qualified Shelley.Spec.Ledger.TxData as TxData
 import qualified Shelley.Spec.Ledger.UTxO as UTxO
+import qualified Shelley.Spec.Ledger.Value as Value
 import Test.Cardano.Crypto.VRF.Fake (FakeVRF)
 
 data ConcreteCrypto
@@ -134,6 +135,12 @@ type TxOut = Tx.TxOut ConcreteCrypto
 type TxId = TxData.TxId ConcreteCrypto
 
 type UTxO = UTxO.UTxO ConcreteCrypto
+
+type UTxOOut = TxData.UTxOOut ConcreteCrypto
+
+type Value = Value.Value ConcreteCrypto
+
+type CompactValue = Value.CompactValue ConcreteCrypto
 
 type Block = BlockChain.Block ConcreteCrypto
 
