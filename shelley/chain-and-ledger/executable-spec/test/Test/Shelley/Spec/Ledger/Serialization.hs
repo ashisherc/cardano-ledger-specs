@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -99,7 +100,6 @@ import Shelley.Spec.Ledger.Keys
   ( Hash,
     KeyRole (..),
     asWitness,
-    coerceKeyRole,
     encodeSignedKES,
     hash,
     hashKey,
@@ -195,8 +195,8 @@ import Test.Shelley.Spec.Ledger.ConcreteCryptoTypes
   ( Addr,
     BHBody,
     ConcreteCrypto,
-    CoreKeyPair,
     Credential,
+    GenesisKeyPair,
     HashHeader,
     KeyHash,
     KeyPair,
@@ -313,7 +313,7 @@ getRawNonce :: Nonce -> ByteString
 getRawNonce (Nonce hsh) = getHash hsh
 getRawNonce NeutralNonce = error "The neutral nonce has no bytes"
 
-testGKey :: CoreKeyPair
+testGKey :: GenesisKeyPair
 testGKey = KeyPair vk sk
   where
     (sk, vk) = mkGenKey (0, 0, 0, 0, 0)
@@ -352,6 +352,16 @@ testBlockIssuerKey :: KeyPair 'BlockIssuer
 testBlockIssuerKey = KeyPair vk sk
   where
     (sk, vk) = mkKeyPair (0, 0, 0, 0, 4)
+
+testStakePoolKey :: KeyPair 'StakePool
+testStakePoolKey = KeyPair vk sk
+  where
+    (sk, vk) = mkKeyPair (0, 0, 0, 0, 5)
+
+testGenesisDelegateKey :: KeyPair 'GenesisDelegate
+testGenesisDelegateKey = KeyPair vk sk
+  where
+    (sk, vk) = mkKeyPair (0, 0, 0, 0, 6)
 
 testKey1Token :: Tokens -> Tokens
 testKey1Token = e
@@ -421,7 +431,7 @@ testBHB =
     { bheaderBlockNo = BlockNo 44,
       bheaderSlotNo = SlotNo 33,
       bheaderPrev = BlockHash testHeaderHash,
-      bheaderVk = coerceKeyRole $ vKey testKey1,
+      bheaderVk = vKey testBlockIssuerKey,
       bheaderVrfVk = snd testVRF,
       bheaderEta =
         coerce $
@@ -639,7 +649,7 @@ serializationUnitTests =
         ),
       checkEncodingCBOR
         "stake_delegation"
-        (DCertDeleg (Delegate (Delegation testStakeCred (coerceKeyRole testKeyHash2))))
+        (DCertDeleg (Delegate (Delegation testStakeCred (hashKey . vKey $ testStakePoolKey))))
         ( T
             ( TkListLen 3
                 . TkWord 2 -- delegation cert with key
@@ -668,7 +678,7 @@ serializationUnitTests =
             ( DCertPool
                 ( RegPool
                     ( PoolParams
-                        { _poolPubKey = coerceKeyRole testKeyHash1,
+                        { _poolPubKey = hashKey . vKey $ testStakePoolKey,
                           _poolVrf = testVRFKH,
                           _poolPledge = poolPledge,
                           _poolCost = poolCost,
@@ -706,7 +716,7 @@ serializationUnitTests =
             ),
       checkEncodingCBOR
         "retire_pool"
-        (DCertPool (RetirePool (coerceKeyRole testKeyHash1) (EpochNo 1729)))
+        (DCertPool (RetirePool (hashKey . vKey $ testStakePoolKey) (EpochNo 1729)))
         ( T
             ( TkListLen 3
                 . TkWord 4 -- Pool Retire
@@ -716,7 +726,13 @@ serializationUnitTests =
         ),
       checkEncodingCBOR
         "genesis_delegation"
-        (DCertGenesis (GenesisDelegCert testGKeyHash (coerceKeyRole testKeyHash1) testVRFKH))
+        ( DCertGenesis
+            ( GenesisDelegCert
+                testGKeyHash
+                (hashKey . vKey $ testGenesisDelegateKey)
+                testVRFKH
+            )
+        )
         ( T
             ( TkListLen 4
                 . TkWord 5 -- genesis delegation cert
@@ -1167,7 +1183,7 @@ serializationUnitTests =
           txb4 = txb 503
           txb5 = txb 504
           w1 = makeWitnessVKey (hashTxBody txb1) testKey1
-          w2 = makeWitnessVKey (hashTxBody txb1) testKey2
+          w2 = makeWitnessVKey (hashTxBody txb1) (testKey2 @'Payment)
           ws = Set.fromList [w1, w2]
           tx1 = Tx txb1 mempty {addrWits = Set.singleton w1} SNothing
           tx2 = Tx txb2 mempty {addrWits = ws} SNothing
@@ -1240,7 +1256,7 @@ serializationUnitTests =
         (EpochNo 13)
         (T (TkWord64 13)),
       let n = (17 :: Natural)
-          bs = Map.singleton (coerceKeyRole testKeyHash1) n
+          bs = Map.singleton (hashKey . vKey $ testStakePoolKey) n
        in checkEncodingCBOR
             "blocks_made"
             (BlocksMade bs)
@@ -1266,21 +1282,21 @@ serializationUnitTests =
       let mark =
             SnapShot
               (Stake $ Map.singleton testStakeCred (Coin 11))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           set =
             SnapShot
               (Stake $ Map.singleton (KeyHashObj testKeyHash2) (Coin 22))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           go =
             SnapShot
               (Stake $ Map.singleton testStakeCred (Coin 33))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           p =
             PoolParams
-              { _poolPubKey = coerceKeyRole testKeyHash1,
+              { _poolPubKey = (hashKey $ vKey testStakePoolKey),
                 _poolVrf = testVRFKH,
                 _poolPledge = Coin 5,
                 _poolCost = Coin 4,
@@ -1295,7 +1311,7 @@ serializationUnitTests =
                         _poolMDHash = BS.pack "{}"
                       }
               }
-          ps = Map.singleton (coerceKeyRole testKeyHash1) p
+          ps = Map.singleton (hashKey $ vKey testStakePoolKey) p
           fs = Coin 123
        in checkEncodingCBOR
             "snapshots"
@@ -1311,21 +1327,21 @@ serializationUnitTests =
           mark =
             SnapShot
               (Stake $ Map.singleton testStakeCred (Coin 11))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           set =
             SnapShot
               (Stake $ Map.singleton (KeyHashObj testKeyHash2) (Coin 22))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           go =
             SnapShot
               (Stake $ Map.singleton testStakeCred (Coin 33))
-              (Map.singleton testStakeCred (coerceKeyRole testKeyHash3))
+              (Map.singleton testStakeCred (hashKey $ vKey testStakePoolKey))
               ps
           p =
             PoolParams
-              { _poolPubKey = coerceKeyRole testKeyHash1,
+              { _poolPubKey = (hashKey $ vKey testStakePoolKey),
                 _poolVrf = testVRFKH,
                 _poolPledge = Coin 5,
                 _poolCost = Coin 4,
@@ -1340,12 +1356,12 @@ serializationUnitTests =
                         _poolMDHash = BS.pack "{}"
                       }
               }
-          ps = Map.singleton (coerceKeyRole testKeyHash1) p
+          ps = Map.singleton (hashKey $ vKey testStakePoolKey) p
           fs = Coin 123
           ss = SnapShots mark set go fs
           ls = emptyLedgerState
           pps = emptyPParams
-          bs = Map.singleton (coerceKeyRole testKeyHash1) 1
+          bs = Map.singleton (hashKey $ vKey testStakePoolKey) 1
           nm = emptyNonMyopic
           es = EpochState ac ss ls pps pps nm
           ru =
