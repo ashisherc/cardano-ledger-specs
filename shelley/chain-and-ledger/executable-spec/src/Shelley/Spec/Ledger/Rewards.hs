@@ -9,6 +9,7 @@ module Shelley.Spec.Ledger.Rewards
     ApparentPerformance (..),
     NonMyopic (..),
     emptyNonMyopic,
+    emptyHistogram,
     getTopRankedPools,
     StakeShare (..),
     mkApparentPerformance,
@@ -18,6 +19,8 @@ module Shelley.Spec.Ledger.Rewards
     percentile',
     Histogram (..),
     LogWeight (..),
+    updateHistogram,
+    likelihood,
   )
 where
 
@@ -49,6 +52,8 @@ import Shelley.Spec.Ledger.BaseTypes
   ( Network,
     UnitInterval (..),
     unitIntervalToRational,
+    ActiveSlotCoeff,
+    activeSlotVal
   )
 import Shelley.Spec.Ledger.Coin (Coin (..))
 import Shelley.Spec.Ledger.Credential (Credential (..))
@@ -105,13 +110,21 @@ instance FromCBOR Histogram where
 
 instance NoUnexpectedThunks Histogram
 
-calculate_t :: Rational -> UnitInterval -> Double
-calculate_t activeSlotCoeff relativeStake =
-  1 - (1 - realToFrac activeSlotCoeff)
-    ** realToFrac (unitIntervalToRational relativeStake)
+calculate_t :: ActiveSlotCoeff -> Rational -> Double
+calculate_t activeSlotCoeff relativeStake = 1 - (1 - asc) ** s
+  where
+    asc = realToFrac . unitIntervalToRational . activeSlotVal $ activeSlotCoeff
+    s = realToFrac relativeStake
+
+samplePositions :: [Double]
+samplePositions = (\x -> (x + 0.5) / 100.0) <$> [0.0 .. 99.0]
+
+emptyHistogram :: Histogram
+emptyHistogram = Histogram . Seq.fromList $
+  replicate (length samplePositions) (LogWeight 0)
 
 likelihood ::
-  Int -> -- number of blocks produced this epoch
+  Natural -> -- number of blocks produced this epoch
   Double -> -- chance we're allowed to produce a block in this slot
   Word64 ->
   Seq LogWeight
@@ -144,10 +157,9 @@ likelihood blocks t slotsPerEpoch = Seq.fromList $ sample <$> samplePositions
     l :: Double -> Double
     l x = n * log x + m * log (1 - t * x)
     sample position = LogWeight (realToFrac $ l position)
-    samplePositions = (\x -> (x + 0.5) / 100.0) <$> [0.0 .. 99.0]
 
-update :: Histogram -> Seq LogWeight -> Histogram
-update (Histogram points) likelihoods = normalize $ Histogram $ Seq.zipWith (+) points likelihoods
+updateHistogram :: Histogram -> Seq LogWeight -> Histogram
+updateHistogram (Histogram points) likelihoods = normalize $ Histogram $ Seq.zipWith (+) points likelihoods
 
 -- | Normalize the histogram so that the total area is 1
 normalize :: Histogram -> Histogram
@@ -329,9 +341,11 @@ rewardOnePool ::
   Stake crypto ->
   Coin ->
   Set (RewardAcnt crypto) ->
-  (Map (RewardAcnt crypto) Coin, Rational)
-rewardOnePool network pp r blocksN blocksTotal pool (Stake stake) (Coin total) addrsRew =
-  (rewards', appPerf)
+  ActiveSlotCoeff ->
+  (Map (RewardAcnt crypto) Coin, Seq LogWeight)
+rewardOnePool
+  network pp r blocksN blocksTotal pool (Stake stake) (Coin total) addrsRew asc =
+  (rewards', histo)
   where
     Coin pstake = sum stake
     Coin ostake =
@@ -347,6 +361,8 @@ rewardOnePool network pp r blocksN blocksTotal pool (Stake stake) (Coin total) a
         then maxPool pp r sigma pr
         else 0
     appPerf = mkApparentPerformance (_d pp) sigma blocksN blocksTotal
+    histo = likelihood blocksN (calculate_t asc sigma) 1000
+    -- ^^ TODO adjust likelihood by d, get slots per epoch
     poolR = floor (appPerf * fromIntegral maxP)
     tot = fromIntegral total
     mRewards =
@@ -371,20 +387,21 @@ reward ::
   Stake crypto ->
   Map (Credential 'Staking crypto) (KeyHash 'StakePool crypto) ->
   Coin ->
-  (Map (RewardAcnt crypto) Coin, Map (KeyHash 'StakePool crypto) Rational)
-reward network pp (BlocksMade b) r addrsRew poolParams stake delegs total =
-  (rewards', appPerformances)
+  ActiveSlotCoeff ->
+  (Map (RewardAcnt crypto) Coin, Map (KeyHash 'StakePool crypto) (Seq LogWeight))
+reward network pp (BlocksMade b) r addrsRew poolParams stake delegs total asc =
+  (rewards', hs)
   where
     pdata = Map.toList $ Map.intersectionWithKey (\hk params blocks -> (params, blocks, poolStake hk delegs stake)) poolParams b
+    totalBlocks = sum b
     results =
       [ ( hk,
-          rewardOnePool network pp r n totalBlocks pool actgr total addrsRew
+          rewardOnePool network pp r n totalBlocks pool actgr total addrsRew asc
         )
         | (hk, (pool, n, actgr)) <- pdata
       ]
     rewards' = foldl' (\m (_, r') -> Map.union m (fst r')) Map.empty results
-    appPerformances = Map.fromList $ fmap (\(hk, r') -> (hk, snd r')) results
-    totalBlocks = sum b
+    hs = Map.fromList $ fmap (\(hk, r') -> (hk, snd r')) results
 
 nonMyopicStake ::
   KeyHash 'StakePool crypto ->
