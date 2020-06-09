@@ -377,6 +377,12 @@ rewardOnePool
     potentialRewards = Map.insert (_poolRAcnt pool) iReward mRewards
     rewards' = Map.filter (/= Coin 0) $ addrsRew ◁ potentialRewards
 
+mkZeroBlockHistograms ::
+  ActiveSlotCoeff ->
+  -- Stuff ->
+  Map (KeyHash 'StakePool crypto) (Seq LogWeight)
+mkZeroBlockHistograms asc = Map.empty
+
 reward ::
   Network ->
   PParams ->
@@ -390,7 +396,7 @@ reward ::
   ActiveSlotCoeff ->
   (Map (RewardAcnt crypto) Coin, Map (KeyHash 'StakePool crypto) (Seq LogWeight))
 reward network pp (BlocksMade b) r addrsRew poolParams stake delegs total asc =
-  (rewards', hs)
+  (rewards', hs')
   where
     pdata = Map.toList $ Map.intersectionWithKey (\hk params blocks -> (params, blocks, poolStake hk delegs stake)) poolParams b
     totalBlocks = sum b
@@ -402,6 +408,7 @@ reward network pp (BlocksMade b) r addrsRew poolParams stake delegs total asc =
       ]
     rewards' = foldl' (\m (_, r') -> Map.union m (fst r')) Map.empty results
     hs = Map.fromList $ fmap (\(hk, r') -> (hk, snd r')) results
+    hs' = Map.union hs (mkZeroBlockHistograms asc)
 
 nonMyopicStake ::
   KeyHash 'StakePool crypto ->

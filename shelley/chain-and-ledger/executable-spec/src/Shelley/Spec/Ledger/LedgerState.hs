@@ -100,6 +100,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Sequence.Strict as StrictSeq
 import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
@@ -108,6 +109,7 @@ import Shelley.Spec.Ledger.BaseTypes
   ( Globals (..),
     ShelleyBase,
     StrictMaybe (..),
+    ActiveSlotCoeff,
     activeSlotVal,
     intervalValue,
   )
@@ -166,6 +168,7 @@ import Shelley.Spec.Ledger.Rewards
     likelihood,
     reward,
     LogWeight,
+    Histogram (..),
   )
 import Shelley.Spec.Ledger.Serialization (mapFromCBOR, mapToCBOR)
 import Shelley.Spec.Ledger.Slot
@@ -923,18 +926,11 @@ updateNonMypopic nm rPot hs ss =
       snap = ss
     }
   where
-    SnapShot _ _ poolParams = ss
-    -- TODO handle pools that made no blocks
-    --absentPools =
-    --  Set.toList $
-    --    (Map.keysSet poolParams) `Set.difference` (Map.keysSet hs)
-    --performanceZero = Map.fromList $ fmap (\p -> (p, 0)) absentPools
-
     history = histograms nm
     performance kh newHistogram = case Map.lookup kh history of
-      Nothing -> updateHistogram emptyHistogram newHistogram
+      Nothing -> Histogram newHistogram
       Just prevHistogram -> updateHistogram prevHistogram newHistogram
-    hs' = Map.mapWithKey performance hs -- (hs `Map.union` performanceZero)
+    hs' = Map.mapWithKey performance hs
 
 -- | Create a reward update
 createRUpd ::
