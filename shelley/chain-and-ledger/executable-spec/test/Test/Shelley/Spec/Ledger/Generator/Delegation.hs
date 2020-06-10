@@ -69,8 +69,8 @@ import Shelley.Spec.Ledger.Slot (EpochNo (EpochNo), SlotNo)
 import Shelley.Spec.Ledger.TxData
   ( MIRPot (..),
     RewardAcnt (..),
-    unStakePools,
     _poolPubKey,
+    unStakePools,
     pattern DCertDeleg,
     pattern DCertGenesis,
     pattern DCertPool,
@@ -172,7 +172,7 @@ genDCert
             ksGenesisDelegates
             pparams
             accountState
-            dState -- TODO @@@
+            dState
         )
       ]
     where

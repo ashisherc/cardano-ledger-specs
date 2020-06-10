@@ -128,7 +128,6 @@ import Shelley.Spec.Ledger.PParams
   ( PParams' (PParams),
     PParamsUpdate,
     ProtVer (..),
-    emptyPParams,
     _a0,
     _d,
     _eMax,
@@ -145,6 +144,7 @@ import Shelley.Spec.Ledger.PParams
     _protocolVersion,
     _rho,
     _tau,
+    emptyPParams,
     pattern ProposedPPUpdates,
     pattern Update,
   )
@@ -232,7 +232,7 @@ import Test.Shelley.Spec.Ledger.SerializationProperties
   )
 import Test.Shelley.Spec.Ledger.Utils
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, assertEqual, assertFailure, testCase, (@?=))
+import Test.Tasty.HUnit ((@?=), Assertion, assertEqual, assertFailure, testCase)
 import Test.Tasty.Hedgehog (testProperty)
 import qualified Test.Tasty.QuickCheck as QC (testProperty)
 
@@ -654,7 +654,7 @@ serializationUnitTests =
                 . TkWord 2 -- delegation cert with key
             )
             <> S testStakeCred
-            <> S testKeyHash2
+            <> S (hashKey . vKey $ testStakePoolKey)
         ),
       -- checkEncodingCBOR "register-pool"
       let poolOwner = testKeyHash2
@@ -697,7 +697,7 @@ serializationUnitTests =
             )
             ( T (TkListLen 10)
                 <> T (TkWord 3) -- Reg Pool
-                <> S testKeyHash1 -- operator
+                <> S (hashKey . vKey $ testStakePoolKey) -- operator
                 <> S testVRFKH -- vrf keyhash
                 <> S poolPledge -- pledge
                 <> S poolCost -- cost
@@ -720,7 +720,7 @@ serializationUnitTests =
             ( TkListLen 3
                 . TkWord 4 -- Pool Retire
             )
-            <> S testKeyHash1 -- key hash
+            <> S (hashKey . vKey $ testStakePoolKey) -- key hash
             <> S (EpochNo 1729) -- epoch
         ),
       checkEncodingCBOR
@@ -737,7 +737,7 @@ serializationUnitTests =
                 . TkWord 5 -- genesis delegation cert
             )
             <> S testGKeyHash -- delegator credential
-            <> S testKeyHash1 -- delegatee key hash
+            <> S (hashKey . vKey $ testGenesisDelegateKey) -- delegatee key hash
             <> S testVRFKH -- delegatee vrf key hash
         ),
       -- checkEncodingCBOR "mir"
@@ -1085,7 +1085,7 @@ serializationUnitTests =
                 <> T (TkWord 0)
                 <> T (TkListLen 1)
                 <> S w
-                <> T (TkWord 1)
+                <> T (TkWord 2)
                 <> T (TkListLen 1)
                 <> S testScript
                 <> S md
@@ -1106,7 +1106,7 @@ serializationUnitTests =
               (snd testKESKeys)
               0
               (KESPeriod 0)
-              (signedDSIGN @ConcreteCrypto (sKey testKey1) (snd testKESKeys, 0, KESPeriod 0))
+              (signedDSIGN @ConcreteCrypto (sKey testBlockIssuerKey) (snd testKESKeys, 0, KESPeriod 0))
           protover = ProtVer 0 0
        in checkEncodingCBOR
             "block_header_body"
@@ -1227,11 +1227,11 @@ serializationUnitTests =
                 <> S w2
                 <> S w1
                 -- tx 3, one script
-                <> T (TkMapLen 1 . TkWord 1)
+                <> T (TkMapLen 1 . TkWord 2)
                 <> T (TkListLen 1)
                 <> S testScript
                 -- tx 4, two scripts
-                <> T (TkMapLen 1 . TkWord 1)
+                <> T (TkMapLen 1 . TkWord 2)
                 <> T (TkListLen 2)
                 <> S testScript
                 <> S testScript2
@@ -1241,7 +1241,7 @@ serializationUnitTests =
                 <> T (TkListLen 2)
                 <> S w2
                 <> S w1
-                <> T (TkWord 1)
+                <> T (TkWord 2)
                 <> T (TkListLen 2)
                 <> S testScript
                 <> S testScript2
