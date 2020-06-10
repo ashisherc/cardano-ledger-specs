@@ -128,6 +128,7 @@ import Shelley.Spec.Ledger.PParams
   ( PParams' (PParams),
     PParamsUpdate,
     ProtVer (..),
+    emptyPParams,
     _a0,
     _d,
     _eMax,
@@ -144,7 +145,6 @@ import Shelley.Spec.Ledger.PParams
     _protocolVersion,
     _rho,
     _tau,
-    emptyPParams,
     pattern ProposedPPUpdates,
     pattern Update,
   )
@@ -200,7 +200,6 @@ import Test.Shelley.Spec.Ledger.ConcreteCryptoTypes
     HashHeader,
     KeyHash,
     KeyPair,
-    KeyPair,
     MultiSig,
     PoolDistr,
     RewardUpdate,
@@ -233,7 +232,7 @@ import Test.Shelley.Spec.Ledger.SerializationProperties
   )
 import Test.Shelley.Spec.Ledger.Utils
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit ((@?=), Assertion, assertEqual, assertFailure, testCase)
+import Test.Tasty.HUnit (Assertion, assertEqual, assertFailure, testCase, (@?=))
 import Test.Tasty.Hedgehog (testProperty)
 import qualified Test.Tasty.QuickCheck as QC (testProperty)
 
@@ -1261,7 +1260,7 @@ serializationUnitTests =
             "blocks_made"
             (BlocksMade bs)
             ( T (TkMapLen 1)
-                <> S testKeyHash1
+                <> S (hashKey . vKey $ testStakePoolKey)
                 <> S n
             ),
       checkEncodingCBOR
