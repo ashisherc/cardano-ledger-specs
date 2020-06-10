@@ -28,9 +28,7 @@ import Cardano.Binary
   )
 import Cardano.Prelude (NoUnexpectedThunks (..), asks)
 import Control.State.Transition
-  ( (?!),
-    (?!:),
-    Embed,
+  ( Embed,
     IRC (..),
     InitialRule,
     STS (..),
@@ -41,6 +39,8 @@ import Control.State.Transition
     liftSTS,
     trans,
     wrapFailed,
+    (?!),
+    (?!:),
   )
 import qualified Data.Map.Strict as Map
 import qualified Data.Sequence as Seq (filter)
@@ -51,11 +51,11 @@ import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import GHC.Generics (Generic)
 import Shelley.Spec.Ledger.BaseTypes
-  ( (==>),
-    ShelleyBase,
+  ( ShelleyBase,
     StrictMaybe (..),
     invalidKey,
     quorum,
+    (==>),
   )
 import Shelley.Spec.Ledger.Crypto (Crypto)
 import Shelley.Spec.Ledger.Delegation.Certificates (isInstantaneousRewards)
@@ -157,7 +157,7 @@ instance
     n <- decodeListLen
     decodeWord >>= \case
       0 -> do
-        matchSize "InvalidWitnessesUTXOW" 2 n
+        matchSize "InvalidWitnessesUTXOW" 3 n
         awits <- decodeList fromCBOR
         rwits <- decodeList fromCBOR
         pure $ InvalidWitnessesUTXOW (awits, rwits)
