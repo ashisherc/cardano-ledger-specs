@@ -1,6 +1,1 @@
-Test/Shelley/Spec/Ledger/Generator/Block.hs:176:19-72: warning: [-Wincomplete-uni-patterns]
-    Pattern match(es) are non-exhaustive
-    In a pattern binding: Patterns not matched: Nothing
-    |
-176 |               let Just apks = List.find (\x -> hk x == pkh) ksStakePools
-    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+All good (26 modules, at 16:45:38)

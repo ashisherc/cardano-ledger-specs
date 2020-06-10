@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -20,7 +21,7 @@ import qualified Cardano.Crypto.Signing as Byron
 import Cardano.Prelude (Proxy (..))
 import Data.Maybe (fromJust)
 import Data.String (fromString)
-import Hedgehog ((===), Gen)
+import Hedgehog (Gen, (===))
 import qualified Hedgehog as H
 import Shelley.Spec.Ledger.Address
   ( BootstrapAddress (..),
@@ -73,4 +74,5 @@ instance Crypto C where
   type KES C = KES ConcreteCrypto
   type VRF C = VRF ConcreteCrypto
   type DSIGN C = DSIGN.Ed25519DSIGN
-  type HASH C = Hash.Blake2b_224
+  type HASH C = HASH ConcreteCrypto
+  type ADDRHASH C = Hash.Blake2b_224

@@ -19,7 +19,7 @@ import qualified Data.List as List (find)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, listToMaybe)
-import Data.Ratio ((%), denominator, numerator)
+import Data.Ratio (denominator, numerator, (%))
 import qualified Data.Set as Set
 import Shelley.Spec.Ledger.BaseTypes
   ( activeSlotCoeff,
@@ -31,10 +31,7 @@ import Shelley.Spec.Ledger.BlockChain (LastAppliedBlock (..))
 import Shelley.Spec.Ledger.Delegation.Certificates (PoolDistr (..))
 import Shelley.Spec.Ledger.Keys (GenDelegs (..), KeyRole (..), coerceKeyRole, hashKey, vKey)
 import Shelley.Spec.Ledger.LedgerState
-  ( _delegationState,
-    _dstate,
-    _genDelegs,
-    esLState,
+  ( esLState,
     esPp,
     getGKeys,
     nesEL,
@@ -42,6 +39,9 @@ import Shelley.Spec.Ledger.LedgerState
     nesOsched,
     nesPd,
     overlaySchedule,
+    _delegationState,
+    _dstate,
+    _genDelegs,
     pattern ActiveSlot,
     pattern EpochState,
     pattern NewEpochState,
@@ -174,7 +174,12 @@ genBlock
           (pkh, (stake, _)) : _ -> case getPraosSlot lookForPraosStart nextOSlot os nextOs of
             Nothing -> (nextOSlot, 0, Left gkh)
             Just ps ->
-              let Just apks = List.find (\x -> hk x == pkh) ksStakePools
+              let apks =
+                    fromMaybe
+                      (error "Cannot find stake pool key")
+                      $ List.find
+                        (\x -> hk x == pkh)
+                        ksStakePools
                in (ps, stake, Right apks)
 
     let kp@(KESPeriod kesPeriod_) = runShelleyBase $ kesPeriod nextSlot

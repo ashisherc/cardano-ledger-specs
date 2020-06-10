@@ -7,7 +7,7 @@
 module Test.Shelley.Spec.Ledger.UnitTests (unitTests) where
 
 import Control.State.Transition.Extended (PredicateFailure, TRC (..), applySTS)
-import Control.State.Transition.Trace ((.-), (.->), checkTrace)
+import Control.State.Transition.Trace (checkTrace, (.-), (.->))
 import qualified Data.Map.Strict as Map
 import Data.Ratio ((%))
 import Data.Sequence.Strict (StrictSeq (..))
@@ -21,19 +21,25 @@ import Shelley.Spec.Ledger.Credential (Credential (..), pattern StakeRefBase)
 import Shelley.Spec.Ledger.Keys (KeyRole (..), asWitness, hashKey, vKey)
 import Shelley.Spec.Ledger.LedgerState
   ( AccountState (..),
-    _dstate,
-    _rewards,
+    WitHashes (..),
     emptyDState,
     emptyPState,
     genesisCoins,
     genesisId,
     overlaySchedule,
+    _dstate,
+    _rewards,
     pattern DPState,
     pattern UTxOState,
   )
 import Shelley.Spec.Ledger.PParams
 import Shelley.Spec.Ledger.STS.Delegs (PredicateFailure (..))
-import Shelley.Spec.Ledger.STS.Ledger (pattern DelegsFailure, pattern LedgerEnv, pattern UtxoFailure, pattern UtxowFailure)
+import Shelley.Spec.Ledger.STS.Ledger
+  ( pattern DelegsFailure,
+    pattern LedgerEnv,
+    pattern UtxoFailure,
+    pattern UtxowFailure,
+  )
 import Shelley.Spec.Ledger.STS.Utxo (PredicateFailure (..))
 import Shelley.Spec.Ledger.STS.Utxow (PredicateFailure (..))
 import Shelley.Spec.Ledger.Slot
@@ -167,7 +173,7 @@ data AliceToBob = AliceToBob
     refunds :: Coin,
     certs :: [DCert],
     ttl :: SlotNo,
-    signers :: [KeyPair 'Witness]
+    signers :: [KeyPair 'AWitness]
   }
 
 aliceGivesBobLovelace :: AliceToBob -> Tx
@@ -267,7 +273,15 @@ testWitnessNotIncluded =
           SNothing
       tx = Tx txbody mempty SNothing
       wits = Set.singleton (asWitness $ hashKey $ vKey alicePay)
-   in testInvalidTx [UtxowFailure $ MissingVKeyWitnessesUTXOW wits] tx
+   in testInvalidTx
+        [ UtxowFailure $ MissingVKeyWitnessesUTXOW $
+            WitHashes
+              { addrWitHashes = wits,
+                regWitHashes =
+                  mempty
+              }
+        ]
+        tx
 
 testSpendNotOwnedUTxO :: Assertion
 testSpendNotOwnedUTxO =
@@ -284,7 +298,15 @@ testSpendNotOwnedUTxO =
       aliceWit = makeWitnessVKey (hashTxBody txbody) alicePay
       tx = Tx txbody mempty {addrWits = Set.fromList [aliceWit]} SNothing
       wits = Set.singleton (asWitness $ hashKey $ vKey bobPay)
-   in testInvalidTx [UtxowFailure $ MissingVKeyWitnessesUTXOW wits] tx
+   in testInvalidTx
+        [ UtxowFailure $ MissingVKeyWitnessesUTXOW $
+            WitHashes
+              { addrWitHashes = wits,
+                regWitHashes =
+                  mempty
+              }
+        ]
+        tx
 
 testWitnessWrongUTxO :: Assertion
 testWitnessWrongUTxO =
@@ -312,8 +334,15 @@ testWitnessWrongUTxO =
       tx = Tx txbody mempty {addrWits = Set.fromList [aliceWit]} SNothing
       wits = Set.singleton (asWitness $ hashKey $ vKey bobPay)
    in testInvalidTx
-        [ UtxowFailure $ InvalidWitnessesUTXOW [asWitness $ vKey alicePay],
-          UtxowFailure $ MissingVKeyWitnessesUTXOW wits
+        [ UtxowFailure $
+            InvalidWitnessesUTXOW
+              ([asWitness $ vKey alicePay], mempty),
+          UtxowFailure $ MissingVKeyWitnessesUTXOW $
+            WitHashes
+              { addrWitHashes = wits,
+                regWitHashes =
+                  mempty
+              }
         ]
         tx
 
@@ -392,7 +421,11 @@ testInvalidWintess =
       txb' = txb {_ttl = SlotNo 2}
       wits = mempty {addrWits = makeWitnessesVKey (hashTxBody txb') [alicePay]}
       tx = Tx txb wits SNothing
-      errs = [UtxowFailure $ InvalidWitnessesUTXOW [asWitness $ vKey alicePay]]
+      errs =
+        [ UtxowFailure $
+            InvalidWitnessesUTXOW
+              ([asWitness $ vKey alicePay], mempty)
+        ]
    in testLEDGER (utxoState, dpState) tx ledgerEnv (Left [errs])
 
 testWithdrawalNoWit :: Assertion
@@ -414,7 +447,10 @@ testWithdrawalNoWit =
       wits = mempty {addrWits = Set.singleton $ makeWitnessVKey (hashTxBody txb) alicePay}
       tx = Tx txb wits SNothing
       missing = Set.singleton (asWitness $ hashKey $ vKey bobStake)
-      errs = [UtxowFailure $ MissingVKeyWitnessesUTXOW missing]
+      errs =
+        [ UtxowFailure . MissingVKeyWitnessesUTXOW $
+            WitHashes {addrWitHashes = missing, regWitHashes = mempty}
+        ]
       dpState' = addReward dpState (mkVKeyRwdAcnt Testnet bobStake) (Coin 10)
    in testLEDGER (utxoState, dpState') tx ledgerEnv (Left [errs])
 
