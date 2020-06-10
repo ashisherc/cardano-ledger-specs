@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PolyKinds #-}
 
 module Test.Shelley.Spec.Ledger.Generator.Genesis where
 
@@ -12,6 +13,7 @@ import qualified Data.Map.Strict as Map
 import Data.Proxy
 import Data.Time.Clock (NominalDiffTime, UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Typeable (Typeable)
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import Hedgehog.Internal.Gen ()
@@ -22,7 +24,17 @@ import Shelley.Spec.Ledger.BaseTypes hiding (Seed)
 import Shelley.Spec.Ledger.Coin
 import Shelley.Spec.Ledger.Crypto
 import Shelley.Spec.Ledger.Genesis
-import Shelley.Spec.Ledger.Keys (Hash, KeyHash, KeyPair (..), KeyRole (..), VKey (..), hashKey, hashVerKeyVRF)
+import Shelley.Spec.Ledger.Keys
+  ( AlgorithmForHashType,
+    Hash,
+    KeyHash,
+    KeyPair (..),
+    KeyRole (..),
+    KeyRoleHashType,
+    VKey (..),
+    hashKey,
+    hashVerKeyVRF,
+  )
 import Shelley.Spec.Ledger.PParams
 import Test.Cardano.Crypto.Gen (genProtocolMagicId)
 import Test.Shelley.Spec.Ledger.ConcreteCryptoTypes hiding (Addr, KeyHash, KeyPair, SignKeyDSIGN, SignKeyVRF, VKey, VerKeyVRF)
@@ -145,7 +157,12 @@ genFundsList = Gen.list (Range.linear 1 100) genGenesisFundPair
 genSeed :: Int -> Gen Seed
 genSeed n = mkSeedFromBytes <$> Gen.bytes (Range.singleton n)
 
-genKeyHash :: Gen (KeyHash krole ConcreteCrypto)
+genKeyHash ::
+  ( Typeable disc,
+    Typeable (KeyRoleHashType disc),
+    Hash.HashAlgorithm (AlgorithmForHashType ConcreteCrypto (KeyRoleHashType disc))
+  ) =>
+  Gen (KeyHash krole ConcreteCrypto)
 genKeyHash = hashKey . snd <$> genKeyPair
 
 -- | Generate a deterministic key pair given a seed.

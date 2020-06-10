@@ -303,13 +303,21 @@ deriving instance
 deriving newtype instance ToJSONKey (KeyHash disc crypto)
 
 deriving newtype instance
-  Crypto crypto =>
+  ( Crypto crypto,
+    Typeable disc,
+    Typeable (KeyRoleHashType disc),
+    Hash.HashAlgorithm (AlgorithmForHashType crypto (KeyRoleHashType disc))
+  ) =>
   FromJSONKey (KeyHash disc crypto)
 
 deriving newtype instance ToJSON (KeyHash disc crypto)
 
 deriving newtype instance
-  Crypto crypto =>
+  ( Crypto crypto,
+    Typeable disc,
+    Typeable (KeyRoleHashType disc),
+    Hash.HashAlgorithm (AlgorithmForHashType crypto (KeyRoleHashType disc))
+  ) =>
   FromJSON (KeyHash disc crypto)
 
 instance HasKeyRole KeyHash

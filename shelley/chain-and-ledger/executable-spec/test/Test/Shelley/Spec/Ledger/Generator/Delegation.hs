@@ -167,7 +167,7 @@ genDCert
         (frequencyDeRegKeyCert, genDeRegKeyCert c ksKeyPairs ksMSigScripts dState),
         (frequencyRetirePoolCert, genRetirePool c ksStakePools pState slot),
         ( frequencyMIRCert,
-          genInstantaneousRewards slot (fst <$> ksCoreNodes) pparams accountState dState
+          genInstantaneousRewards slot ksCoreNodes pparams accountState dState -- TODO @@@
         )
       ]
     where
@@ -466,7 +466,7 @@ genRetirePool Constants {frequencyLowMaxEpoch} poolKeys pState slot =
 genInstantaneousRewards ::
   HasCallStack =>
   SlotNo ->
-  [(CoreKeyPair, AllPoolKeys 'GenesisDelegate)] ->
+  [(GenesisKeyPair, AllIssuerKeys 'GenesisDelegate)] -> -- TODO ???
   PParams ->
   AccountState ->
   DState ->

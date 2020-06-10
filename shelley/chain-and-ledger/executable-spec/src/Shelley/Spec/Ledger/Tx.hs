@@ -119,8 +119,8 @@ type family HKD f a where
   HKD f a = f a
 
 data WitnessSetHKD f crypto = WitnessSet'
-  { addrWits' :: !(HKD f (Set (WitVKey crypto AWitness))),
-    regWits' :: !(HKD f (Set (WitVKey crypto RWitness))),
+  { addrWits' :: !(HKD f (Set (WitVKey crypto 'AWitness))),
+    regWits' :: !(HKD f (Set (WitVKey crypto 'RWitness))),
     msigWits' :: !(HKD f (Map (ScriptHash crypto) (MultiSig crypto))),
     bootWits' :: !(HKD f (Set (BootstrapWitness crypto))),
     txWitsBytes :: LByteString
@@ -153,8 +153,8 @@ instance Crypto crypto => Monoid (WitnessSetHKD Identity crypto) where
 
 pattern WitnessSet ::
   Crypto crypto =>
-  Set (WitVKey crypto AWitness) ->
-  Set (WitVKey crypto RWitness) ->
+  Set (WitVKey crypto 'AWitness) ->
+  Set (WitVKey crypto 'RWitness) ->
   Map (ScriptHash crypto) (MultiSig crypto) ->
   Set (BootstrapWitness crypto) ->
   WitnessSet crypto
