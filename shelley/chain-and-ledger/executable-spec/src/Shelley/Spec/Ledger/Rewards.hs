@@ -9,7 +9,6 @@ module Shelley.Spec.Ledger.Rewards
     ApparentPerformance (..),
     NonMyopic (..),
     emptyNonMyopic,
-    emptyHistogram,
     getTopRankedPools,
     StakeShare (..),
     mkApparentPerformance,
@@ -19,8 +18,8 @@ module Shelley.Spec.Ledger.Rewards
     percentile',
     Histogram (..),
     LogWeight (..),
-    updateHistogram,
     likelihood,
+    Likelihood (..),
   )
 where
 
@@ -34,12 +33,12 @@ import Cardano.Binary
     enforceSize,
   )
 import Cardano.Prelude (NoUnexpectedThunks (..))
-import Data.Foldable (find)
+import Data.Foldable (find, fold)
 import Data.Function (on)
 import Data.List (foldl', sortBy)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Ratio ((%))
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
@@ -91,7 +90,7 @@ import Shelley.Spec.Ledger.TxData (PoolParams (..), RewardAcnt (..))
  - -}
 
 newtype LogWeight = LogWeight Float
-  deriving (Eq, Show, Num, NoUnexpectedThunks, ToCBOR, FromCBOR)
+  deriving (Eq, Show, Ord, Num, NoUnexpectedThunks, ToCBOR, FromCBOR)
 
 toLogWeight :: Double -> LogWeight
 toLogWeight d = LogWeight (realToFrac $ log d)
@@ -102,13 +101,27 @@ fromLogWeight (LogWeight l) = exp (realToFrac l)
 data Histogram = Histogram {points :: Seq LogWeight}
   deriving (Eq, Show, Generic)
 
-instance ToCBOR Histogram where
-  toCBOR (Histogram logweights) = encodeFoldable logweights
+newtype Likelihood = Likelihood (Seq LogWeight)
+  deriving (Eq, Show, Generic)
 
-instance FromCBOR Histogram where
-  fromCBOR = Histogram <$> decodeSeq fromCBOR
+instance NoUnexpectedThunks Likelihood
 
-instance NoUnexpectedThunks Histogram
+instance Semigroup Likelihood where
+  (Likelihood x) <> (Likelihood y) = normalizeLikelihood $ Likelihood (Seq.zipWith (+) x y)
+
+instance Monoid Likelihood where
+  mempty = Likelihood $ Seq.replicate (length samplePositions) (LogWeight 0)
+
+normalizeLikelihood :: Likelihood -> Likelihood
+normalizeLikelihood (Likelihood xs) = Likelihood $ (\x -> x - m) <$> xs
+  where
+  m = minimum xs
+
+instance ToCBOR Likelihood where
+  toCBOR (Likelihood logweights) = encodeFoldable logweights
+
+instance FromCBOR Likelihood where
+  fromCBOR = Likelihood <$> decodeSeq fromCBOR
 
 calculate_t :: ActiveSlotCoeff -> Rational -> Double
 calculate_t activeSlotCoeff relativeStake = 1 - (1 - asc) ** s
@@ -119,16 +132,12 @@ calculate_t activeSlotCoeff relativeStake = 1 - (1 - asc) ** s
 samplePositions :: [Double]
 samplePositions = (\x -> (x + 0.5) / 100.0) <$> [0.0 .. 99.0]
 
-emptyHistogram :: Histogram
-emptyHistogram = Histogram . Seq.fromList $
-  replicate (length samplePositions) (LogWeight 0)
-
 likelihood ::
   Natural -> -- number of blocks produced this epoch
   Double -> -- chance we're allowed to produce a block in this slot
   Word64 ->
-  Seq LogWeight
-likelihood blocks t slotsPerEpoch = Seq.fromList $ sample <$> samplePositions
+  Likelihood
+likelihood blocks t slotsPerEpoch = Likelihood . Seq.fromList $ sample <$> samplePositions
   where
     -- The likelihood function L(x) is the probability of observing the data we got
     -- under the assumption that the underlying pool performance is equal to x.
@@ -158,8 +167,8 @@ likelihood blocks t slotsPerEpoch = Seq.fromList $ sample <$> samplePositions
     l x = n * log x + m * log (1 - t * x)
     sample position = LogWeight (realToFrac $ l position)
 
-updateHistogram :: Histogram -> Seq LogWeight -> Histogram
-updateHistogram (Histogram points) likelihoods = normalize $ Histogram $ Seq.zipWith (+) points likelihoods
+posteriorDistribution :: Histogram -> Likelihood -> Histogram
+posteriorDistribution (Histogram points) (Likelihood likelihoods) = normalize $ Histogram $ Seq.zipWith (+) points likelihoods
 
 -- | Normalize the histogram so that the total area is 1
 normalize :: Histogram -> Histogram
@@ -168,19 +177,27 @@ normalize (Histogram values) = Histogram $ (\x -> x - logArea) <$> values
     logArea = toLogWeight area
     area = reimannSum 0.01 (fromLogWeight <$> values)
 
+
 -- | Calculate the k percentile for this distribution.
 -- k is a value between 0 and 1. The 0 percentile is 0 and the 1 percentile is 1
-percentile :: Double -> Histogram -> ApparentPerformance
-percentile p (Histogram values) =
+percentile :: Double -> Histogram -> Likelihood -> ApparentPerformance
+percentile p prior likelihood =
   ApparentPerformance . fst
     $ fromMaybe (1, 1)
     $ find (\(x, fx) -> fx > p) cdf
   where
-    cdf = Seq.zip samplePositions $ Seq.scanl (+) 0 (fromLogWeight <$> values)
-    samplePositions = (\x -> (x + 0.5) / 100.0) <$> Seq.fromList [0.0 .. 99.0]
+    (Histogram values) = posteriorDistribution prior likelihood
+    cdf = Seq.zip (Seq.fromList samplePositions) $ Seq.scanl (+) 0 (fromLogWeight <$> values)
 
-percentile' :: Histogram -> ApparentPerformance
-percentile' = percentile 0.1
+
+percentile' :: Likelihood -> ApparentPerformance
+percentile' = percentile 0.1 h
+  where
+  h = normalize . Histogram . Seq.fromList $ logBeta 40 3 <$> samplePositions
+  -- Beta(n,m)(x) = C * x^(n-1)*(1-x)^(m-1)
+  -- log( Beta(n,m)(x) ) = (n-1) * log x + (m-1) * log (1-x)
+  logBeta n m x = LogWeight . realToFrac $ (n-1) * log x + (m-1) * log (1-x)
+
 
 reimannSum :: (Functor f, Foldable f) => Double -> f Double -> Double
 reimannSum width heights = sum $ fmap (width *) heights
@@ -198,7 +215,7 @@ bucketIntervals :: [Float]
 bucketIntervals = undefined
 
 data NonMyopic crypto = NonMyopic
-  { histograms :: !(Map (KeyHash 'StakePool crypto) Histogram),
+  { likelihoods :: !(Map (KeyHash 'StakePool crypto) Likelihood),
     rewardPot :: !Coin,
     snap :: !(SnapShot crypto)
   }
@@ -212,7 +229,7 @@ instance NoUnexpectedThunks (NonMyopic crypto)
 instance Crypto crypto => ToCBOR (NonMyopic crypto) where
   toCBOR
     NonMyopic
-      { histograms = aps,
+      { likelihoods = aps,
         rewardPot = rp,
         snap = s
       } =
@@ -229,7 +246,7 @@ instance Crypto crypto => FromCBOR (NonMyopic crypto) where
     s <- fromCBOR
     pure $
       NonMyopic
-        { histograms = aps,
+        { likelihoods = aps,
           rewardPot = rp,
           snap = s
         }
@@ -339,13 +356,14 @@ rewardOnePool ::
   Natural ->
   PoolParams crypto ->
   Stake crypto ->
+  Rational ->
   Coin ->
   Set (RewardAcnt crypto) ->
   ActiveSlotCoeff ->
-  (Map (RewardAcnt crypto) Coin, Seq LogWeight)
+  Map (RewardAcnt crypto) Coin
 rewardOnePool
-  network pp r blocksN blocksTotal pool (Stake stake) (Coin total) addrsRew asc =
-  (rewards', histo)
+  network pp r blocksN blocksTotal pool (Stake stake) sigma (Coin total) addrsRew asc =
+  rewards'
   where
     Coin pstake = sum stake
     Coin ostake =
@@ -353,7 +371,6 @@ rewardOnePool
         (\c o -> c + (fromMaybe (Coin 0) $ Map.lookup (KeyHashObj o) stake))
         (Coin 0)
         (_poolOwners pool)
-    sigma = fromIntegral pstake % fromIntegral total
     Coin pledge = _poolPledge pool
     pr = fromIntegral pledge % fromIntegral total
     (Coin maxP) =
@@ -361,7 +378,7 @@ rewardOnePool
         then maxPool pp r sigma pr
         else 0
     appPerf = mkApparentPerformance (_d pp) sigma blocksN blocksTotal
-    histo = likelihood blocksN (calculate_t asc sigma) 1000
+    ls = likelihood blocksN (calculate_t asc sigma) 1000
     -- ^^ TODO adjust likelihood by d, get slots per epoch
     poolR = floor (appPerf * fromIntegral maxP)
     tot = fromIntegral total
@@ -394,21 +411,28 @@ reward ::
   Map (Credential 'Staking crypto) (KeyHash 'StakePool crypto) ->
   Coin ->
   ActiveSlotCoeff ->
-  (Map (RewardAcnt crypto) Coin, Map (KeyHash 'StakePool crypto) (Seq LogWeight))
+  (Map (RewardAcnt crypto) Coin, Map (KeyHash 'StakePool crypto) Likelihood)
 reward network pp (BlocksMade b) r addrsRew poolParams stake delegs total asc =
-  (rewards', hs')
+  (rewards', hs)
   where
-    pdata = Map.toList $ Map.intersectionWithKey (\hk params blocks -> (params, blocks, poolStake hk delegs stake)) poolParams b
     totalBlocks = sum b
-    results =
-      [ ( hk,
-          rewardOnePool network pp r n totalBlocks pool actgr total addrsRew asc
-        )
-        | (hk, (pool, n, actgr)) <- pdata
-      ]
-    rewards' = foldl' (\m (_, r') -> Map.union m (fst r')) Map.empty results
-    hs = Map.fromList $ fmap (\(hk, r') -> (hk, snd r')) results
-    hs' = Map.union hs (mkZeroBlockHistograms asc)
+    results = do 
+       (hk, pparams)  <- Map.toList poolParams
+       let sigma = fromIntegral pstake % fromIntegral total
+           blocksProduced = Map.lookup hk b
+           actgr@(Stake s) = poolStake hk delegs stake
+           Coin pstake = sum s
+           rewardMap = case blocksProduced of
+             Nothing -> Nothing
+             -- TODO what about rewards for pools that didnt produce a block
+             Just n -> Just $ rewardOnePool
+               network pp r n totalBlocks pparams actgr sigma total addrsRew asc
+           ls = likelihood (fromMaybe 0 blocksProduced) (calculate_t asc sigma) 1000
+           -- ^^ TODO adjust likelihood by d, get slots per epoch
+       pure (hk, rewardMap, ls)
+    rewards' = fold $ catMaybes $ fmap (\(_,x,_) -> x) results
+    hs = Map.fromList $ fmap (\(hk,_,l) -> (hk, l)) results
+    --hs' = Map.union hs (mkZeroBlockHistograms asc)
 
 nonMyopicStake ::
   KeyHash 'StakePool crypto ->

@@ -59,16 +59,16 @@ getNonMyopicMemberRewards globals ss creds =
     es = nesEs ss
     pp = esPp es
     NonMyopic
-      { histograms = hs,
+      { likelihoods = ls,
         rewardPot = rPot,
         snap = (SnapShot stake delegs poolParams)
       } = esNonMyopic es
     poolData =
       Map.intersectionWithKey
         (\k h p -> (percentile' h, p, toShare . sum . unStake $ poolStake k delegs stake))
-        hs
+        ls
         poolParams
-    topPools = getTopRankedPools rPot (Coin total) pp poolParams (fmap percentile' hs)
+    topPools = getTopRankedPools rPot (Coin total) pp poolParams (fmap percentile' ls)
     mkNMMRewards ms k (ap, poolp, sigma) = nonMyopicMemberRew pp poolp rPot s ms nmps ap
       where
         s = (toShare . _poolPledge) poolp

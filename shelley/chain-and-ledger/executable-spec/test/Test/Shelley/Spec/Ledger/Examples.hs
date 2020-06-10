@@ -233,7 +233,7 @@ import Shelley.Spec.Ledger.PParams
   )
 import Shelley.Spec.Ledger.Rewards
   ( ApparentPerformance (..),
-    Histogram (..),
+    Likelihood (..),
     emptyNonMyopic,
     rewardPot,
     pattern NonMyopic,
@@ -1516,8 +1516,8 @@ oCertIssueNosEx2H =
 --    sigma = fromRational (fromIntegral stake % (fromIntegral $ maxLLSupply - reserves))
 --    stake = aliceCoinEx2BBase + aliceCoinEx2BPtr + bobInitCoin
 
-alicePerfEx2H :: Histogram
-alicePerfEx2H = Histogram Seq.empty
+alicePerfEx2H :: Likelihood
+alicePerfEx2H = mempty
 
 deltaT2H :: Coin
 deltaT2H = Coin 786986666668
@@ -1857,7 +1857,7 @@ expectedStEx2K =
                 deltaF = Coin 0,
                 nonMyopic =
                   NonMyopic
-                    (Map.singleton (hk alicePool) (Histogram Seq.empty))
+                    (Map.singleton (hk alicePool) mempty)
                     (Coin 0)
                     snapEx2E
               }

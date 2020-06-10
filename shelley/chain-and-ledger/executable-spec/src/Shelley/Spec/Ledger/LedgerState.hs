@@ -163,9 +163,8 @@ import Shelley.Spec.Ledger.Rewards
   ( ApparentPerformance (..),
     NonMyopic (..),
     emptyNonMyopic,
-    emptyHistogram,
-    updateHistogram,
     likelihood,
+    Likelihood,
     reward,
     LogWeight,
     Histogram (..),
@@ -916,20 +915,20 @@ applyRUpd ru (EpochState as ss ls pr pp nm) = EpochState as' ss ls' pr pp nm
 updateNonMypopic ::
   NonMyopic crypto ->
   Coin ->
-  Map (KeyHash 'StakePool crypto) (Seq LogWeight) ->
+  Map (KeyHash 'StakePool crypto) Likelihood ->
   SnapShot crypto ->
   NonMyopic crypto
 updateNonMypopic nm rPot hs ss =
   nm
-    { histograms = hs',
+    { likelihoods = hs',
       rewardPot = rPot,
       snap = ss
     }
   where
-    history = histograms nm
+    history = likelihoods nm
     performance kh newHistogram = case Map.lookup kh history of
-      Nothing -> Histogram newHistogram
-      Just prevHistogram -> updateHistogram prevHistogram newHistogram
+      Nothing -> mempty
+      Just prevHistogram -> prevHistogram <> newHistogram
     hs' = Map.mapWithKey performance hs
 
 -- | Create a reward update

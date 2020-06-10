@@ -89,7 +89,7 @@ import Shelley.Spec.Ledger.OCert (KESPeriod (..))
 import Shelley.Spec.Ledger.PParams (PParams, ProtVer)
 import Shelley.Spec.Ledger.Rewards
   ( ApparentPerformance (..),
-    Histogram (..),
+    Likelihood (..),
     LogWeight (..),
   )
 import qualified Shelley.Spec.Ledger.STS.Chain as STS
@@ -421,8 +421,8 @@ instance Crypto c => Arbitrary (OBftSlot c) where
 instance Arbitrary PParams where
   arbitrary = genPParams (geConstants genEnv)
 
-instance Arbitrary Histogram where
-  arbitrary = Histogram <$> arbitrary
+instance Arbitrary Likelihood where
+  arbitrary = Likelihood <$> arbitrary
 
 instance Arbitrary LogWeight where
   arbitrary = LogWeight <$> arbitrary
