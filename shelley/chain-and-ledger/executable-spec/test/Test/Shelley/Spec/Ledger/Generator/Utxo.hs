@@ -38,10 +38,10 @@ import Shelley.Spec.Ledger.Credential
   )
 import Shelley.Spec.Ledger.Keys (Hash, KeyRole (..), asWitness)
 import Shelley.Spec.Ledger.LedgerState
-  ( _dstate,
+  ( minfee,
+    _dstate,
     _ptrs,
     _rewards,
-    minfee,
     pattern UTxOState,
   )
 import Shelley.Spec.Ledger.STS.Ledger (LedgerEnv (..))
@@ -53,7 +53,7 @@ import Shelley.Spec.Ledger.Tx
     pattern TxBody,
     pattern TxOut,
   )
-import Shelley.Spec.Ledger.TxData (Wdrl (..), _outputs, _txfee, getRwdCred)
+import Shelley.Spec.Ledger.TxData (Wdrl (..), getRwdCred, _outputs, _txfee)
 import Shelley.Spec.Ledger.UTxO
   ( balance,
     hashTxBody,
@@ -167,7 +167,7 @@ genTx
           -- attempt to make provision for certificate deposits (otherwise discard this generator)
           let stakeScripts = pickStakeScripts certCreds
               genesisWitnesses = pickGenesisWitnesses certCreds
-              genesisDelegationWitnesses = pickGenesisDelegateWitnesses certCreds 
+              genesisDelegationWitnesses = pickGenesisDelegateWitnesses certCreds
               certAWitnesses = pickAWitnesses certCreds
               certRWitnesses = pickRWitnesses certCreds
 
@@ -189,8 +189,18 @@ genTx
           txBody <- genTxBody (Set.fromList inputs) outputs certs wdrls update (Coin 0) slotWithTTL
           let multiSig =
                 Map.fromList $
-                  (map (\(payScript, _) -> (hashScript payScript, payScript)) spendScripts)
-                    ++ (map (\(_, sScript) -> (hashScript sScript, sScript)) (stakeScripts ++ wdrlScripts))
+                  ( map
+                      ( \(payScript, _) ->
+                          (hashScript payScript, payScript)
+                      )
+                      spendScripts
+                  )
+                    ++ ( map
+                           ( \(_, sScript) ->
+                               (hashScript sScript, sScript)
+                           )
+                           (stakeScripts ++ wdrlScripts)
+                       )
 
           -- choose one possible combination of keys for multi-sig scripts
           --
@@ -203,13 +213,17 @@ genTx
               genesisWitnesses' = fmap asWitness genesisWitnesses
               genesisDelegationWitnesses' = fmap asWitness genesisDelegationWitnesses
               certAWitnesses' = fmap asWitness certAWitnesses
-              certRWitnesses' = fmap asWitness certRWitnesses ++ fmap asWitness genesisDelegationWitnesses'
+              certRWitnesses' = fmap asWitness certRWitnesses
 
           let wits =
                 mkTxWits
                   (hashTxBody txBody)
                   (spendWitnesses' ++ wdrlWitnesses' ++ certAWitnesses')
-                  (updateWitnesses' ++ genesisWitnesses' ++ certRWitnesses')
+                  ( updateWitnesses'
+                      ++ genesisWitnesses'
+                      ++ genesisDelegationWitnesses'
+                      ++ certRWitnesses'
+                  )
                   multiSig
 
           let metadata = SNothing -- TODO generate metadata
@@ -233,51 +247,49 @@ genTx
                     mkTxWits
                       (hashTxBody txBody)
                       (spendWitnesses' ++ wdrlWitnesses' ++ certAWitnesses')
-                      (updateWitnesses' ++ genesisWitnesses' ++ certRWitnesses')
+                      ( updateWitnesses'
+                          ++ genesisWitnesses'
+                          ++ certRWitnesses'
+                          ++ genesisDelegationWitnesses'
+                      )
                       multiSig
 
               pure (Tx txBody' wits' metadata)
-      where
-        pickGenesisDelegateWitnesses certs =
-          foldl' (++) [] $
-            Maybe.mapMaybe
-              ( \case
-                  DelegateCred c -> Just c
-                  _ -> Nothing
-              )
-              certs
-        pickCertWitnesses =
+    where
+      pickGenesisDelegateWitnesses certs =
+        foldl' (++) [] $
           Maybe.mapMaybe
             ( \case
-                KeyCred c -> Just c
+                DelegateCred c -> Just c
                 _ -> Nothing
             )
-        pickGenesisWitnesses certs =
-          foldl' (++) [] $
-            Maybe.mapMaybe
-              ( \case
-                  CoreKeyCred c -> Just c
-                  _ -> Nothing
-              )
-              certs
-        pickStakeScripts =
+            certs
+      pickGenesisWitnesses certs =
+        foldl' (++) [] $
           Maybe.mapMaybe
             ( \case
-                ScriptCred c -> Just c
+                CoreKeyCred c -> Just c
                 _ -> Nothing
             )
-        pickAWitnesses =
-          Maybe.mapMaybe 
-            ( \case
-                StakeCred c -> Just c
-                _ -> Nothing
-            )
-        pickRWitnesses =
-          Maybe.mapMaybe 
-            ( \case
-                PoolCred c -> Just c
-                _ -> Nothing
-            )
+            certs
+      pickStakeScripts =
+        Maybe.mapMaybe
+          ( \case
+              ScriptCred c -> Just c
+              _ -> Nothing
+          )
+      pickAWitnesses =
+        Maybe.mapMaybe
+          ( \case
+              StakeCred c -> Just c
+              _ -> Nothing
+          )
+      pickRWitnesses =
+        Maybe.mapMaybe
+          ( \case
+              PoolCred c -> Just c
+              _ -> Nothing
+          )
 
 mkTxWits ::
   HasCallStack =>

@@ -1,9 +1,11 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PolyKinds #-}
 
 module Test.Shelley.Spec.Ledger.Generator.Genesis where
 
 import Cardano.Crypto.DSIGN.Class
+import qualified Cardano.Crypto.Hash as Hash
 import Cardano.Crypto.Seed (Seed, mkSeedFromBytes)
 import Cardano.Crypto.VRF.Class
 import Cardano.Prelude (Natural, Word32, Word64)
@@ -13,7 +15,6 @@ import qualified Data.Map.Strict as Map
 import Data.Proxy
 import Data.Time.Clock (NominalDiffTime, UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Typeable (Typeable)
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import Hedgehog.Internal.Gen ()
@@ -158,11 +159,13 @@ genSeed :: Int -> Gen Seed
 genSeed n = mkSeedFromBytes <$> Gen.bytes (Range.singleton n)
 
 genKeyHash ::
-  ( Typeable disc,
-    Typeable (KeyRoleHashType disc),
-    Hash.HashAlgorithm (AlgorithmForHashType ConcreteCrypto (KeyRoleHashType disc))
+  ( Hash.HashAlgorithm
+      ( AlgorithmForHashType
+          ConcreteCrypto
+          (KeyRoleHashType disc)
+      )
   ) =>
-  Gen (KeyHash krole ConcreteCrypto)
+  Gen (KeyHash disc ConcreteCrypto)
 genKeyHash = hashKey . snd <$> genKeyPair
 
 -- | Generate a deterministic key pair given a seed.

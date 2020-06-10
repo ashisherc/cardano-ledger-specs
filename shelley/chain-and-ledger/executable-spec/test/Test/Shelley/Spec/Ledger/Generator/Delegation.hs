@@ -69,8 +69,8 @@ import Shelley.Spec.Ledger.Slot (EpochNo (EpochNo), SlotNo)
 import Shelley.Spec.Ledger.TxData
   ( MIRPot (..),
     RewardAcnt (..),
-    _poolPubKey,
     unStakePools,
+    _poolPubKey,
     pattern DCertDeleg,
     pattern DCertGenesis,
     pattern DCertPool,
@@ -112,7 +112,7 @@ data CertCred
   | StakeCred (KeyPair 'Staking)
   | PoolCred (KeyPair 'StakePool)
   | ScriptCred (MultiSig, MultiSig)
-  | DelegateCred [KeyPair 'StakePool]
+  | DelegateCred [KeyPair 'GenesisDelegate]
   | NoCred
   deriving (Show)
 
@@ -167,13 +167,17 @@ genDCert
         (frequencyDeRegKeyCert, genDeRegKeyCert c ksKeyPairs ksMSigScripts dState),
         (frequencyRetirePoolCert, genRetirePool c ksStakePools pState slot),
         ( frequencyMIRCert,
-          genInstantaneousRewards slot ksCoreNodes pparams accountState dState -- TODO @@@
+          genInstantaneousRewards
+            slot
+            ksGenesisDelegates
+            pparams
+            accountState
+            dState -- TODO @@@
         )
       ]
     where
       dState = _dstate dpState
       pState = _pstate dpState
-      coreKeys = fst <$> genesisKeys
 
 -- | Generate a RegKey certificate along and also returns the staking credential
 -- (needed to witness the certificate)
@@ -466,12 +470,17 @@ genRetirePool Constants {frequencyLowMaxEpoch} poolKeys pState slot =
 genInstantaneousRewards ::
   HasCallStack =>
   SlotNo ->
-  [(GenesisKeyPair, AllIssuerKeys 'GenesisDelegate)] -> -- TODO ???
+  -- | All potential genesis delegate keys
+  [AllIssuerKeys 'GenesisDelegate] ->
   PParams ->
   AccountState ->
   DState ->
   Gen (Maybe (DCert, CertCred))
-genInstantaneousRewards s genesisKeys pparams accountState delegSt = do
+genInstantaneousRewards s delegateKeys pparams accountState delegSt = do
+  let (GenDelegs genDelegs_) = _genDelegs delegSt
+      lookupGenDelegate (dlgPublic) =
+        fromMaybe (error "Cannot find sign key for delegate") $
+          List.find (\a -> hashKey (vKey $ cold a) == dlgPublic) delegateKeys
   let StakeCreds credentials = _stkCreds delegSt
 
   winnerCreds <-
@@ -481,8 +490,8 @@ genInstantaneousRewards s genesisKeys pparams accountState delegSt = do
   let credCoinMap = Map.fromList $ zip winnerCreds coins
 
   coreSigners <-
-    take <$> QC.elements [5 .. (max 0 $ (length genesisKeys) - 1)]
-      <*> QC.shuffle genesisKeys
+    take <$> QC.elements [5 .. (max 0 $ (length genDelegs_) - 1)]
+      <*> QC.shuffle (lookupGenDelegate . fst <$> Map.elems genDelegs_)
 
   pot <- QC.elements [ReservesMIR, TreasuryMIR]
   let rewardAmount = sum $ Map.elems credCoinMap
@@ -505,5 +514,5 @@ genInstantaneousRewards s genesisKeys pparams accountState delegSt = do
       else
         Just
           ( DCertMir (MIRCert pot credCoinMap),
-            DelegateCred ((\(_, pkeys) -> cold pkeys) <$> coreSigners)
+            DelegateCred ((\pkeys -> cold pkeys) <$> coreSigners)
           )
