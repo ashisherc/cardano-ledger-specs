@@ -31,7 +31,7 @@ import Shelley.Spec.Ledger.Address
 import Shelley.Spec.Ledger.BaseTypes
 import Shelley.Spec.Ledger.Coin
 import Shelley.Spec.Ledger.Credential
-import Shelley.Spec.Ledger.Crypto (Crypto, HASH)
+import Shelley.Spec.Ledger.Crypto (Crypto)
 import Shelley.Spec.Ledger.Keys
 import Shelley.Spec.Ledger.PParams
 import Shelley.Spec.Ledger.Scripts
@@ -212,10 +212,10 @@ initialFundsPseudoTxIn addr =
       error $
         "Unsupported Byron address in the genesis UTxO: " <> show byronAddr
   where
-    pseudoTxIn :: Crypto.Hash (HASH c) a -> TxIn c
+    pseudoTxIn :: Crypto.Hash x a -> TxIn c
     pseudoTxIn h = TxIn (pseudoTxId h) 0
-    pseudoTxId :: Crypto.Hash (HASH c) a -> TxId c
+    pseudoTxId :: Crypto.Hash x a -> TxId c
     pseudoTxId = TxId . castHash
     --TODO: move this to the hash API module
-    castHash :: Crypto.Hash (HASH c) a -> Crypto.Hash (HASH c) b
+    castHash :: Crypto.Hash x a -> Crypto.Hash y b
     castHash (Crypto.UnsafeHash h) = Crypto.UnsafeHash h
