@@ -169,7 +169,7 @@ genDCert
         ( frequencyMIRCert,
           genInstantaneousRewards
             slot
-            ksGenesisDelegates
+            ((snd <$> ksCoreNodes) <> ksGenesisDelegates)
             pparams
             accountState
             dState
