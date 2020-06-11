@@ -48,6 +48,7 @@ import Shelley.Spec.Ledger.STS.Ledger (LedgerEnv (..))
 import Shelley.Spec.Ledger.Slot (SlotNo (..))
 import Shelley.Spec.Ledger.Tx
   ( WitnessSetHKD (..),
+    getKeyCombination,
     hashScript,
     pattern Tx,
     pattern TxBody,
@@ -57,6 +58,7 @@ import Shelley.Spec.Ledger.TxData (Wdrl (..), getRwdCred, _outputs, _txfee)
 import Shelley.Spec.Ledger.UTxO
   ( balance,
     hashTxBody,
+    makeWitnessesFromScriptKeys,
     makeWitnessesVKey,
     pattern UTxO,
   )
@@ -128,11 +130,8 @@ genTx
       scripts' <- QC.shuffle ksMSigScripts
 
       -- inputs
-      let ksIndexedPaymentKeys' =
-            Map.fromList $ fmap (\(k, v) -> (k, v)) $
-              Map.toList ksIndexedPaymentKeys
       (witnessedInputs, spendingBalanceUtxo) <-
-        pickSpendingInputs constants scripts' ksIndexedPaymentKeys' utxo
+        pickSpendingInputs constants scripts' ksIndexedPaymentKeys utxo
 
       wdrls <- pickWithdrawals constants ((_rewards . _dstate) dpState)
 
@@ -217,6 +216,7 @@ genTx
 
           let wits =
                 mkTxWits
+                  ksIndexedPaymentKeys
                   (hashTxBody txBody)
                   (spendWitnesses' ++ wdrlWitnesses' ++ certAWitnesses')
                   ( updateWitnesses'
@@ -245,6 +245,7 @@ genTx
                       }
                   wits' =
                     mkTxWits
+                      ksIndexedPaymentKeys
                       (hashTxBody txBody)
                       (spendWitnesses' ++ wdrlWitnesses' ++ certAWitnesses')
                       ( updateWitnesses'
@@ -293,18 +294,32 @@ genTx
 
 mkTxWits ::
   HasCallStack =>
+  Map (KeyHash 'Payment) (KeyPair 'Payment) ->
   Hash ConcreteCrypto TxBody ->
   [KeyPair 'AWitness] ->
   [KeyPair 'RWitness] ->
   Map ScriptHash MultiSig ->
   WitnessSet
-mkTxWits txBodyHash awits rwits msigs =
+mkTxWits indexedPaymentKeys txBodyHash awits rwits msigs =
   WitnessSet
-    { addrWits = makeWitnessesVKey txBodyHash awits,
+    { addrWits =
+        makeWitnessesVKey txBodyHash awits
+          `Set.union` makeWitnessesFromScriptKeys
+            txBodyHash
+            indexedPaymentKeysAsWitnesses
+            msigSignatures,
       regWits = makeWitnessesVKey txBodyHash rwits,
       msigWits = msigs,
       bootWits = mempty
     }
+  where
+    indexedPaymentKeysAsWitnesses =
+      Map.fromAscList
+        . map (\(a, b) -> (asWitness a, asWitness b))
+        . Map.toAscList
+        $ indexedPaymentKeys
+    keysLists = map getKeyCombination $ Map.elems msigs
+    msigSignatures = foldl' Set.union Set.empty $ map Set.fromList keysLists
 
 -- | Generate a transaction body with the given inputs/outputs and certificates
 genTxBody ::
